@@ -1,0 +1,84 @@
+name: Quality
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Verify Python
+        run: |
+          python --version
+          python -c "import sys; print(sys.executable)"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.6"
+
+      - name: Verify uv and lock
+        run: |
+          uv --version
+          uv lock --check
+
+      - name: Export locked development tooling
+        run: |
+          uv export \
+            --frozen \
+            --only-group dev \
+            --format requirements.txt \
+            --output-file "$RUNNER_TEMP/dev-requirements.txt" \
+            --no-emit-project \
+            --no-python-downloads
+
+      - name: Install locked development tooling
+        run: |
+          uv pip install \
+            --system \
+            --strict \
+            --no-python-downloads \
+            -r "$RUNNER_TEMP/dev-requirements.txt"
+
+      - name: Verify development tooling
+        run: |
+          python -c "from importlib.metadata import version; names = ('ruff', 'mypy', 'pytest', 'pytest-cov', 'pytest-asyncio', 'hypothesis'); [print(f'{name}=={version(name)}') for name in names]"
+
+      - name: Ruff
+        run: python -m ruff check src tests
+
+      - name: mypy
+        run: python -m mypy src tests/contract/test_architecture_boundaries.py
+
+      - name: pytest
+        run: python -m pytest
+
+      - name: Verify repository integrity
+        run: |
+          uv lock --check
+          git diff --exit-code -- pyproject.toml uv.lock
+          for path in .venv venv .python .packages; do
+            if [ -e "$path" ]; then
+              echo "Forbidden project environment created: $path"
+              exit 1
+            fi
+          done
