@@ -1,0 +1,60 @@
+[project]
+name = "configurable-knowledge-assistant-platform"
+version = "0.1.0"
+description = "A configurable, evidence-grounded knowledge assistant platform."
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
+    "sqlalchemy",
+    "psycopg[binary]",
+    "pgvector",
+    "pypdf",
+    "python-docx",
+    "sentence-transformers",
+    "httpx",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "hypothesis",
+    "ruff",
+    "mypy",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--strict-markers"
+markers = [
+    "unit: unit tests",
+    "application: application-layer tests",
+    "contract: contract tests",
+    "integration: integration tests",
+    "security: security tests",
+    "evaluation: evaluation tests",
+    "e2e: end-to-end tests",
+    "external: tests that require external services",
+]
+
+[tool.coverage.run]
+source = ["knowledge_platform"]
+branch = true
