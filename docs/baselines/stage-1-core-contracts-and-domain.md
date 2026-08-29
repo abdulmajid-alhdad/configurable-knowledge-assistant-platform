@@ -7,7 +7,7 @@ Project: Configurable Knowledge Assistant Platform
 
 ## 1. Purpose
 
-This document records the accepted Stage 1 framework-independent domain contracts and the evidence used for final review. It is a proposed baseline pending Project Control acceptance.
+This document records the accepted Stage 1 framework-independent domain contracts and the evidence used for final review. It is the accepted Stage 1 baseline.
 
 ## 2. Stage 1 Scope
 
@@ -15,7 +15,7 @@ Stage 1 establishes typed identifiers, aggregate roots, source lifecycle and acc
 
 ## 3. Completion Status
 
-C1-01 through C1-07 are implemented and accepted. C1-08 final quality verification has passed and is accepted. Stage 1 baseline content has been accepted by Project Control. Stage 1 closure still requires the baseline commit, push, and final Hosted Quality.
+C1-01 through C1-08 are CLOSED / ACCEPTED. Stage 1  Core Contracts & Domain is COMPLETE / ACCEPTED. The final baseline commit was pushed successfully. Final Hosted Quality passed.
 
 ## 4. Accepted Commit Lineage
 
@@ -138,8 +138,9 @@ Verified hosted Quality evidence:
 - C1-05 — Quality #7 — PASS
 - C1-06 — Quality #8 — PASS
 - C1-07 — Quality #9 — PASS
+- C1-08 — Quality #10 — PASS
 
-No C1-08 hosted result exists yet because the baseline commit has not been created.
+Final accepted baseline commit: `dda516786a77a3058022ece184e3b6d5f768f8b4`.
 
 ## 21. Known Development Artifacts / Exclusions
 
@@ -157,6 +158,12 @@ Stage 2 may begin only after:
 
 Stage 2 starts with dependency correction / `C2-00` before broad installation work. `C2-00` is not implemented here.
 
+All Stage 2 entry conditions are now SATISFIED.
+
+Stage 2  Platform Foundation & Core Slices: AUTHORIZED
+
+Next task: C2-00  Dependency Correction & Runtime Baseline
+
 ## 23. Baseline Acceptance Record
 
 Baseline Version: 1.0
@@ -164,5 +171,8 @@ Baseline Status: ACCEPTED
 Acceptance Date: 2026-08-29
 Accepted By: Project Control
 C1-08 Final Quality Gate: ACCEPTED
-Stage 1 Closure: PENDING BASELINE COMMIT / PUSH / HOSTED QUALITY
-Stage 2: NOT AUTHORIZED UNTIL FINAL CLOSURE
+Final Baseline Commit: dda516786a77a3058022ece184e3b6d5f768f8b4
+Hosted Quality: Quality #10  PASS
+Stage 1 Closure: COMPLETE / ACCEPTED
+Stage 2: AUTHORIZED
+Next Task: C2-00  Dependency Correction & Runtime Baseline
