@@ -1,0 +1,9 @@
+{
+  "key": "yemen_history",
+  "version": "1.0",
+  "name": "Yemen History Demo Reference",
+  "cases": [
+    {"key": "arabic-grounded", "type": "reference_based", "query": "ما تاريخ اليمن؟", "expected_source_ids": [], "reference_answer": "evidence"},
+    {"key": "unsupported", "type": "deterministic", "query": "سؤال خارج المصدر", "expected_source_ids": []}
+  ]
+}
