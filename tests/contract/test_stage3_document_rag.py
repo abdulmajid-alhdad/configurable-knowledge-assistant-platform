@@ -2,7 +2,6 @@
 
 import json
 from io import BytesIO
-from zipfile import ZIP_DEFLATED, ZipFile
 
 from knowledge_platform.application.document_rag import DocumentRagService
 from knowledge_platform.infrastructure.documents.parsers import (
@@ -134,15 +133,15 @@ def test_pgvector_search_short_circuits_empty_sources() -> None:
 
 
 def test_docx_adapter_real_fixture() -> None:
+    from docx import Document as DocxDocument
+
     buffer = BytesIO()
-    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
-        archive.writestr(
-            "word/document.xml",
-            "<document xmlns='http://schemas.openxmlformats.org/wordprocessingml/2006/main'>"
-            "<body><p><r><t>Direct DOCX fixture</t></r></p></body></document>",
-        )
+    document = DocxDocument()
+    document.add_paragraph("Direct DOCX fixture")
+    document.save(buffer)
     parsed = DocxDocumentParser().parse(buffer.getvalue(), reference="fixture.docx")
     assert "Direct DOCX fixture" in parsed.sections[0].content
+    assert parsed.sections[0].provenance_locator.startswith("fixture.docx#paragraph-")
 
 
 def test_pdf_adapter_real_fixture() -> None:
