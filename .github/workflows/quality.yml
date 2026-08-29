@@ -41,6 +41,16 @@ jobs:
           uv --version
           uv lock --check
 
+      - name: Export locked runtime dependencies
+        run: |
+          uv export \
+            --frozen \
+            --no-dev \
+            --format requirements.txt \
+            --output-file "$RUNNER_TEMP/runtime-requirements.txt" \
+            --no-emit-project \
+            --no-python-downloads
+
       - name: Export locked development tooling
         run: |
           uv export \
@@ -50,6 +60,14 @@ jobs:
             --output-file "$RUNNER_TEMP/dev-requirements.txt" \
             --no-emit-project \
             --no-python-downloads
+
+      - name: Install locked runtime dependencies
+        run: |
+          uv pip install \
+            --system \
+            --strict \
+            --no-python-downloads \
+            -r "$RUNNER_TEMP/runtime-requirements.txt"
 
       - name: Install locked development tooling
         run: |
