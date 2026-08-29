@@ -13,7 +13,6 @@ dependencies = [
     "pgvector",
     "pypdf",
     "python-docx",
-    "sentence-transformers",
     "httpx",
 ]
 
