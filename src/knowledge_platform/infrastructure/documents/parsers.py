@@ -1,5 +1,6 @@
 """Document parsing adapters with platform-owned parsed representations."""
 
+import importlib
 import json
 import re
 import zipfile
@@ -43,7 +44,7 @@ class MarkdownDocumentParser(PlainTextDocumentParser):
 class DocxDocumentParser:
     def parse(self, content: bytes, *, reference: str = "document") -> ParsedDocument:
         try:
-            from docx import Document  # type: ignore[import-not-found]
+            Document = importlib.import_module("docx").Document
         except ImportError:
             with zipfile.ZipFile(BytesIO(content)) as archive:
                 xml = archive.read("word/document.xml")
@@ -72,7 +73,7 @@ class DocxDocumentParser:
 class PyPdfDocumentParser:
     def parse(self, content: bytes, *, reference: str = "document") -> ParsedDocument:
         try:
-            from pypdf import PdfReader  # type: ignore[import-not-found]
+            PdfReader = importlib.import_module("pypdf").PdfReader
         except ImportError:
             values = [value.decode("latin-1") for value in re.findall(rb"\(([^()]*)\)", content)]
             return _ensure(

@@ -4,15 +4,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from pgvector.sqlalchemy import VECTOR
 from sqlalchemy import CheckConstraint, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
-try:
-    from pgvector.sqlalchemy import Vector  # type: ignore[import-not-found]
-except ImportError:  # pragma: no cover - workstation may not have optional driver installed
-    Vector = Text
 
 
 class PlatformBase(DeclarativeBase):
@@ -169,4 +165,4 @@ class DocumentChunkRecord(PlatformBase):
     sequence: Mapped[int] = mapped_column(primary_key=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     provenance_locator: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[object] = mapped_column(Vector(), nullable=False)
+    embedding: Mapped[object] = mapped_column(VECTOR(), nullable=False)

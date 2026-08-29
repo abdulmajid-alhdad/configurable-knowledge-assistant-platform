@@ -24,7 +24,7 @@ class RemoteEmbeddingAdapter:
             dimensions,
         )
         if client is None:
-            import httpx  # type: ignore[import-not-found]
+            httpx = __import__("httpx")
             client = httpx.Client()
         self._client = client
 

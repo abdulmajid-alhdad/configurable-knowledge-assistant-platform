@@ -14,7 +14,7 @@ class RemoteModelAdapter:
     ) -> None:
         self.endpoint, self.model_reference, self.api_key = endpoint, model_reference, api_key
         if client is None:
-            import httpx  # type: ignore[import-not-found]
+            httpx = __import__("httpx")
             client = httpx.Client()
         self._client = client
 
