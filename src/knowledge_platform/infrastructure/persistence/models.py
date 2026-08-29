@@ -81,3 +81,39 @@ class KnowledgeSourceRecord(PlatformBase):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     lifecycle: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ConversationRecord(PlatformBase):
+    """ORM record for ``platform.conversations``."""
+
+    __tablename__ = "conversations"
+    __table_args__ = ({"schema": "platform"},)
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    workspace_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), ForeignKey("platform.workspaces.id"), nullable=False
+    )
+    assistant_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), ForeignKey("platform.assistants.id"), nullable=False
+    )
+
+
+class MessageRecord(PlatformBase):
+    """ORM record for immutable conversation messages."""
+
+    __tablename__ = "messages"
+    __table_args__ = (
+        CheckConstraint("sequence >= 0", name="messages_sequence_nonnegative"),
+        CheckConstraint("role IN ('user', 'assistant')", name="messages_role_vocabulary"),
+        CheckConstraint("btrim(content) <> ''", name="messages_content_nonblank"),
+        {"schema": "platform"},
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("platform.conversations.id"),
+        primary_key=True,
+    )
+    sequence: Mapped[int] = mapped_column(primary_key=True)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)

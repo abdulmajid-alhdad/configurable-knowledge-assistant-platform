@@ -3,6 +3,8 @@
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from knowledge_platform.modules.conversation.domain.conversation import Conversation
+from knowledge_platform.modules.conversation.domain.identifiers import ConversationId
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
 from knowledge_platform.modules.workspace_assistant.domain.assistant import Assistant
@@ -15,12 +17,21 @@ from knowledge_platform.modules.workspace_assistant.domain.workspace import Work
 from .mappers import (
     assistant_from_record,
     assistant_to_record,
+    conversation_from_records,
+    conversation_to_record,
     knowledge_source_from_record,
     knowledge_source_to_record,
+    message_to_record,
     workspace_from_record,
     workspace_to_record,
 )
-from .models import AssistantRecord, KnowledgeSourceRecord, WorkspaceRecord
+from .models import (
+    AssistantRecord,
+    ConversationRecord,
+    KnowledgeSourceRecord,
+    MessageRecord,
+    WorkspaceRecord,
+)
 
 
 class WorkspaceRepository:
@@ -106,3 +117,51 @@ class KnowledgeSourceRepository:
         )
         if getattr(result, "rowcount", 0) == 0:
             raise RuntimeError("knowledge source transition conflict or source not found")
+
+
+class ConversationRepository:
+    """Workspace-scoped persistence for conversations."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, conversation: Conversation, *, workspace_id: WorkspaceId) -> None:
+        if conversation.workspace_id != workspace_id:
+            raise ValueError("conversation workspace does not match persistence workspace")
+        self._session.add(conversation_to_record(conversation))
+
+    def get(
+        self, *, conversation_id: ConversationId, workspace_id: WorkspaceId,
+    ) -> Conversation | None:
+        record = self._session.scalar(
+            select(ConversationRecord).where(
+                ConversationRecord.id == conversation_id.value,
+                ConversationRecord.workspace_id == workspace_id.value,
+            )
+        )
+        if record is None:
+            return None
+        messages = list(self._session.scalars(
+            select(MessageRecord)
+            .where(MessageRecord.conversation_id == conversation_id.value)
+            .order_by(MessageRecord.sequence)
+        ))
+        return conversation_from_records(record, messages)
+
+
+class MessageRepository:
+    """Append-only persistence for Conversation messages."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, conversation: Conversation, *, workspace_id: WorkspaceId) -> None:
+        if conversation.workspace_id != workspace_id:
+            raise ValueError("conversation workspace does not match persistence workspace")
+        if not conversation.messages:
+            raise ValueError("conversation has no message to append")
+        message = conversation.messages[-1]
+        expected = len(conversation.messages) - 1
+        if message.sequence != expected:
+            raise ValueError("message sequence does not match append position")
+        self._session.add(message_to_record(conversation.id, message))
