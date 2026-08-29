@@ -1,5 +1,11 @@
 """Mappings between accepted Domain objects and persistence records."""
 
+from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
+from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
+from knowledge_platform.modules.knowledge_sources.domain.lifecycle import (
+    KnowledgeSourceKind,
+    KnowledgeSourceLifecycle,
+)
 from knowledge_platform.modules.workspace_assistant.domain.assistant import Assistant
 from knowledge_platform.modules.workspace_assistant.domain.configuration import (
     ModelConfiguration,
@@ -11,7 +17,7 @@ from knowledge_platform.modules.workspace_assistant.domain.identifiers import (
 )
 from knowledge_platform.modules.workspace_assistant.domain.workspace import Workspace
 
-from .models import AssistantRecord, WorkspaceRecord
+from .models import AssistantRecord, KnowledgeSourceRecord, WorkspaceRecord
 from .payloads import ModelConfigurationPayload, RetrievalConfigurationPayload
 
 
@@ -53,4 +59,24 @@ def assistant_from_record(record: AssistantRecord) -> Assistant:
         retrieval_configuration=RetrievalConfiguration(
             **RetrievalConfigurationPayload.model_validate(record.retrieval_configuration).model_dump()
         ),
+    )
+
+
+def knowledge_source_to_record(source: KnowledgeSource) -> KnowledgeSourceRecord:
+    return KnowledgeSourceRecord(
+        id=source.id.value,
+        workspace_id=source.workspace_id.value,
+        name=source.name,
+        kind=source.kind.value,
+        lifecycle=source.lifecycle.value,
+    )
+
+
+def knowledge_source_from_record(record: KnowledgeSourceRecord) -> KnowledgeSource:
+    return KnowledgeSource(
+        id=KnowledgeSourceId(record.id),
+        workspace_id=WorkspaceId(record.workspace_id),
+        name=record.name,
+        kind=KnowledgeSourceKind(record.kind),
+        lifecycle=KnowledgeSourceLifecycle(record.lifecycle),
     )

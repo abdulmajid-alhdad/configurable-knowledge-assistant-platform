@@ -115,6 +115,25 @@ class KnowledgeSource:
             raise ValueError(f"{operation} is invalid from {self.lifecycle.value}")
         return replace(self, lifecycle=target)
 
+    def validate_successor(self, transitioned: Self) -> None:
+        """Validate that ``transitioned`` follows an accepted lifecycle edge."""
+        if not isinstance(transitioned, type(self)):
+            raise TypeError("transitioned must be a KnowledgeSource")
+        for operation in (
+            "begin_preparation", "mark_ready", "mark_failed", "disable",
+            "enable", "begin_removal", "mark_removed",
+        ):
+            try:
+                candidate = getattr(self, operation)()
+            except ValueError:
+                continue
+            if candidate.lifecycle is transitioned.lifecycle:
+                return
+        raise ValueError(
+            "invalid lifecycle transition: "
+            f"{self.lifecycle.value} -> {transitioned.lifecycle.value}"
+        )
+
     @property
     def is_retrieval_eligible(self) -> bool:
         return self.lifecycle is KnowledgeSourceLifecycle.READY
