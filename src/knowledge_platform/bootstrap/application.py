@@ -1,6 +1,7 @@
 """Single production composition root for application services."""
 # ruff: noqa: E501
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, cast
 from uuid import UUID
@@ -41,6 +42,7 @@ from knowledge_platform.infrastructure.vector_search.postgres import (
     DocumentRepresentationRepository,
     PgvectorDocumentSearchAdapter,
 )
+from knowledge_platform.modules.document_knowledge.artifacts import OriginalArtifact
 from knowledge_platform.modules.document_knowledge.ports import VectorSearchPort
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
@@ -151,7 +153,8 @@ class ApplicationRuntime:
                     )
 
             async def upload_source(self, workspace_id: UUID, source_id: UUID,
-                                    chunks, filename: str, media_type: str | None) -> Any:
+                                    chunks: AsyncIterator[bytes], filename: str,
+                                    media_type: str | None) -> OriginalArtifact:
                 data: list[bytes] = []
                 total = 0
                 async for chunk in chunks:

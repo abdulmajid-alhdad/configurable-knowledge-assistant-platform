@@ -1,6 +1,8 @@
 """Application service for explicit assistant/source authorization."""
 # ruff: noqa: E501
 
+from typing import Protocol
+
 from knowledge_platform.modules.knowledge_sources.domain.access import KnowledgeAccessScope
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
@@ -11,8 +13,27 @@ from knowledge_platform.modules.workspace_assistant.domain.identifiers import (
 )
 
 
+class AssistantRepositoryPort(Protocol):
+    def get(self, *, assistant_id: AssistantId, workspace_id: WorkspaceId) -> Assistant | None: ...
+
+
+class SourceRepositoryPort(Protocol):
+    def get(self, *, source_id: KnowledgeSourceId, workspace_id: WorkspaceId) -> KnowledgeSource | None: ...
+
+
+class AssociationRepositoryPort(Protocol):
+    def attach(self, *, assistant_id: AssistantId, source_id: KnowledgeSourceId,
+               workspace_id: WorkspaceId) -> None: ...
+    def detach(self, *, assistant_id: AssistantId, source_id: KnowledgeSourceId,
+               workspace_id: WorkspaceId) -> None: ...
+    def list_source_ids(self, *, assistant_id: AssistantId,
+                        workspace_id: WorkspaceId) -> frozenset[KnowledgeSourceId]: ...
+
+
 class AssistantKnowledgeScopeService:
-    def __init__(self, *, assistants, sources, associations) -> None:
+    def __init__(self, *, assistants: AssistantRepositoryPort,
+                 sources: SourceRepositoryPort,
+                 associations: AssociationRepositoryPort) -> None:
         self._assistants = assistants
         self._sources = sources
         self._associations = associations
