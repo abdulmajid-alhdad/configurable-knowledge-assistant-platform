@@ -10,8 +10,8 @@ from pydantic import SecretStr
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from knowledge_platform.application.assistant_knowledge_scope import AssistantKnowledgeScopeService
 from knowledge_platform.application.assistant_conversations import AssistantConversationService
+from knowledge_platform.application.assistant_knowledge_scope import AssistantKnowledgeScopeService
 from knowledge_platform.application.assistants import AssistantService
 from knowledge_platform.application.document_ingestion import DocumentIngestionService
 from knowledge_platform.application.document_rag import DocumentRagService
