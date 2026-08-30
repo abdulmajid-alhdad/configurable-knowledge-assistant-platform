@@ -2,7 +2,10 @@
 
 from dataclasses import dataclass
 
-from .parsers import ParsedDocument, ParsedDocumentSection
+from knowledge_platform.modules.document_knowledge.ports import (
+    ParsedDocument,
+    ParsedDocumentSection,
+)
 
 
 @dataclass(frozen=True, slots=True)
