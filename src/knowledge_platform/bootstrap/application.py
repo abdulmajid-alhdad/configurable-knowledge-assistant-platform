@@ -11,6 +11,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from knowledge_platform.application.assistant_knowledge_scope import AssistantKnowledgeScopeService
+from knowledge_platform.application.assistant_conversations import AssistantConversationService
 from knowledge_platform.application.assistants import AssistantService
 from knowledge_platform.application.document_ingestion import DocumentIngestionService
 from knowledge_platform.application.document_rag import DocumentRagService
@@ -43,6 +44,7 @@ from knowledge_platform.infrastructure.vector_search.postgres import (
     PgvectorDocumentSearchAdapter,
 )
 from knowledge_platform.modules.document_knowledge.artifacts import OriginalArtifact
+from knowledge_platform.modules.conversation.domain.identifiers import ConversationId
 from knowledge_platform.modules.document_knowledge.ports import VectorSearchPort
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
@@ -227,6 +229,30 @@ class ApplicationRuntime:
                         if source.id in ids
                     ]
 
+            def create_conversation(self, workspace_id: UUID, assistant_id: UUID) -> Any:
+                wid = WorkspaceId(workspace_id)
+                with workspace_session_scope(runtime.session_factory, wid) as session:
+                    return runtime.conversation_service(session).create(
+                        workspace_id=wid, assistant_id=AssistantId(assistant_id)
+                    )
+
+            def get_conversation(self, workspace_id: UUID, conversation_id: UUID) -> Any:
+                wid = WorkspaceId(workspace_id)
+                with workspace_session_scope(runtime.session_factory, wid) as session:
+                    return runtime.conversation_service(session).get(
+                        workspace_id=wid,
+                        conversation_id=ConversationId(conversation_id),
+                    )
+
+            def ask_conversation(self, workspace_id: UUID, conversation_id: UUID, question: str) -> Any:
+                wid = WorkspaceId(workspace_id)
+                with workspace_session_scope(runtime.session_factory, wid) as session:
+                    return runtime.conversation_service(session).ask(
+                        workspace_id=wid,
+                        conversation_id=ConversationId(conversation_id),
+                        question=question,
+                    )
+
         return Services()
 
     def assistant_scope_service(self, session: Session) -> AssistantKnowledgeScopeService:
@@ -235,6 +261,14 @@ class ApplicationRuntime:
             assistants=repos.assistant,
             sources=repos.knowledge_source,
             associations=repos.assistant_sources,
+        )
+
+    def conversation_service(self, session: Session) -> AssistantConversationService:
+        repos = self.repositories(session)
+        return AssistantConversationService(
+            assistants=repos.assistant, sources=repos.knowledge_source,
+            associations=repos.assistant_sources, conversations=repos.conversation,
+            messages=repos.message, rag=self.rag_service(session),
         )
 
     def embedding_gateway(self) -> RemoteEmbeddingAdapter:

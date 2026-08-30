@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from knowledge_platform.application.document_rag import DocumentRagService
 from knowledge_platform.delivery.product_api import create_management_router
+from knowledge_platform.delivery.conversation_api import create_conversation_router
 from knowledge_platform.infrastructure.vector_search.store import VectorChunk, VectorSearchStore
 from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
 from knowledge_platform.modules.evidence_grounding.domain.contracts import (
@@ -107,6 +108,7 @@ def create_app(
     query_service = service or _demo_service()
     if runtime is not None:
         application.include_router(create_management_router(runtime.management_services()))
+        application.include_router(create_conversation_router(runtime.management_services()))
 
     @application.get("/health")
     def health() -> dict[str, str]:
