@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -42,7 +43,7 @@ def test_evaluation_runner_uses_execution_port_and_completes() -> None:
     suite = load_suite(Path("evaluation/suites/core.json")).suite
 
     class Execution:
-        def execute(self, case: object) -> object:
+        def execute(self, case: Any) -> object:
             return InsufficientEvidence(reason="no evidence")
 
     report = EvaluationRunner(Execution()).run(suite)
@@ -60,7 +61,7 @@ def test_yemen_reference_uses_core_types_and_arabic_configuration() -> None:
 
 def test_evaluation_suites_execute_to_completed_runs() -> None:
     class Execution:
-        def execute(self, case: object) -> object:
+        def execute(self, case: Any) -> object:
             key = case.key
             if key in {"grounded", "arabic-grounded"}:
                 return GroundedAnswer(
@@ -123,14 +124,29 @@ def test_yemen_grounded_and_insufficient_use_normal_document_rag_path() -> None:
 
 
 def test_evaluation_repository_roundtrip_contract() -> None:
-    suite = load_suite(Path("evaluation/suites/core.json")).suite
+    artifact = load_suite(Path("evaluation/suites/core.json"))
+    suite = artifact.suite
+    snapshot = {"mode": "contract", "provider": "fake"}
 
     class Session:
         def __init__(self) -> None:
             self.records: list[object] = []
+            self.events: list[str] = []
 
         def add(self, record: object) -> None:
+            if isinstance(record, EvaluationResultRecord):
+                assert any(isinstance(item, EvaluationRunRecord) for item in self.records)
+                if not any(isinstance(item, EvaluationResultRecord) for item in self.records):
+                    assert self.events == ["add_run", "flush"]
+                self.events.append("add_result")
+            elif isinstance(record, EvaluationRunRecord):
+                self.events.append("add_run")
             self.records.append(record)
+
+        def flush(self) -> None:
+            assert sum(isinstance(item, EvaluationRunRecord) for item in self.records) == 1
+            assert not any(isinstance(item, EvaluationResultRecord) for item in self.records)
+            self.events.append("flush")
 
     class Execution:
         def execute(self, case: object) -> object:
@@ -138,17 +154,47 @@ def test_evaluation_repository_roundtrip_contract() -> None:
 
     report = EvaluationRunner(Execution()).run(suite)
     session = Session()
-    EvaluationRepository(session).add_report(report, workspace_id=__import__(
+    EvaluationRepository(cast(Any, session)).add_report(report, workspace_id=__import__(
         "knowledge_platform.modules.workspace_assistant.domain.identifiers",
         fromlist=["WorkspaceId"],
-    ).WorkspaceId.new())
+    ).WorkspaceId.new(), suite_hash=artifact.sha256, configuration_snapshot=snapshot)
     run_record = next(item for item in session.records if isinstance(item, EvaluationRunRecord))
     result_record = next(
         item for item in session.records if isinstance(item, EvaluationResultRecord)
     )
     assert run_record.suite_key == suite.key
     assert run_record.suite_version == suite.version
+    assert run_record.suite_hash == artifact.sha256
+    assert run_record.configuration_snapshot == snapshot
+    assert run_record.summary_metrics == report.metrics
     assert run_record.lifecycle == "completed"
+    assert session.events == ["add_run", "flush"] + [
+        "add_result"
+    ] * len(report.results)
     assert result_record.run_id == report.run.id.value
     assert result_record.case_key in {case.key for case in suite.cases}
     assert "password" not in str(result_record.diagnostic).lower()
+
+
+def test_evaluation_repository_rejects_blank_suite_hash() -> None:
+    suite = load_suite(Path("evaluation/suites/core.json")).suite
+
+    class Session:
+        def add(self, record: object) -> None:
+            del record
+
+    class Execution:
+        def execute(self, case: object) -> object:
+            return InsufficientEvidence("no evidence")
+
+    report = EvaluationRunner(Execution()).run(suite)
+    with pytest.raises(ValueError, match="suite_hash must not be blank"):
+        EvaluationRepository(cast(Any, Session())).add_report(
+            report,
+            workspace_id=__import__(
+                "knowledge_platform.modules.workspace_assistant.domain.identifiers",
+                fromlist=["WorkspaceId"],
+            ).WorkspaceId.new(),
+            suite_hash=" ",
+            configuration_snapshot={"mode": "contract"},
+        )

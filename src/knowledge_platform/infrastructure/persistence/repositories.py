@@ -1,6 +1,6 @@
 """Explicit persistence adapters for Workspace and Assistant."""
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from knowledge_platform.modules.conversation.domain.conversation import Conversation
@@ -26,6 +26,7 @@ from .mappers import (
     workspace_to_record,
 )
 from .models import (
+    AssistantKnowledgeSourceRecord,
     AssistantRecord,
     ConversationRecord,
     KnowledgeSourceRecord,
@@ -67,6 +68,84 @@ class AssistantRepository:
         record = self._session.scalar(statement)
         return assistant_from_record(record) if record is not None else None
 
+    def list_for_workspace(self, workspace_id: WorkspaceId) -> list[Assistant]:
+        statement = select(AssistantRecord).where(
+            AssistantRecord.workspace_id == workspace_id.value
+        ).order_by(AssistantRecord.id)
+        return [assistant_from_record(record) for record in self._session.scalars(statement)]
+
+    def save_reconfiguration(
+        self, *, previous: Assistant, reconfigured: Assistant,
+        workspace_id: WorkspaceId,
+    ) -> None:
+        if previous.workspace_id != workspace_id or reconfigured.workspace_id != workspace_id:
+            raise ValueError("assistant workspace does not match persistence workspace")
+        if previous.id != reconfigured.id:
+            raise ValueError("assistant identity does not match reconfiguration")
+        result = self._session.execute(
+            update(AssistantRecord)
+            .where(
+                AssistantRecord.id == previous.id.value,
+                AssistantRecord.workspace_id == workspace_id.value,
+            )
+            .values(
+                name=reconfigured.name,
+                description=reconfigured.description,
+                instructions=reconfigured.instructions,
+                language=reconfigured.language,
+                model_configuration={
+                    "provider": reconfigured.model_configuration.provider,
+                    "model_reference": reconfigured.model_configuration.model_reference,
+                },
+                retrieval_configuration={},
+            )
+        )
+        if getattr(result, "rowcount", 0) == 0:
+            raise RuntimeError("assistant not found")
+
+
+class AssistantKnowledgeSourceRepository:
+    """Explicit workspace-scoped assistant knowledge access persistence."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def attach(self, *, assistant_id: AssistantId, source_id: KnowledgeSourceId,
+               workspace_id: WorkspaceId) -> None:
+        existing = self._session.scalar(
+            select(AssistantKnowledgeSourceRecord).where(
+                AssistantKnowledgeSourceRecord.workspace_id == workspace_id.value,
+                AssistantKnowledgeSourceRecord.assistant_id == assistant_id.value,
+                AssistantKnowledgeSourceRecord.knowledge_source_id == source_id.value,
+            )
+        )
+        if existing is not None:
+            return
+        row = AssistantKnowledgeSourceRecord(
+            workspace_id=workspace_id.value,
+            assistant_id=assistant_id.value,
+            knowledge_source_id=source_id.value,
+        )
+        self._session.add(row)
+
+    def detach(self, *, assistant_id: AssistantId, source_id: KnowledgeSourceId,
+               workspace_id: WorkspaceId) -> None:
+        self._session.execute(
+            delete(AssistantKnowledgeSourceRecord).where(
+                AssistantKnowledgeSourceRecord.workspace_id == workspace_id.value,
+                AssistantKnowledgeSourceRecord.assistant_id == assistant_id.value,
+                AssistantKnowledgeSourceRecord.knowledge_source_id == source_id.value,
+            )
+        )
+
+    def list_source_ids(self, *, assistant_id: AssistantId,
+                        workspace_id: WorkspaceId) -> frozenset[KnowledgeSourceId]:
+        statement = select(AssistantKnowledgeSourceRecord.knowledge_source_id).where(
+            AssistantKnowledgeSourceRecord.workspace_id == workspace_id.value,
+            AssistantKnowledgeSourceRecord.assistant_id == assistant_id.value,
+        )
+        return frozenset(KnowledgeSourceId(value) for value in self._session.scalars(statement))
+
 
 class KnowledgeSourceRepository:
     """Explicit workspace-scoped persistence for KnowledgeSource aggregates."""
@@ -91,6 +170,12 @@ class KnowledgeSourceRepository:
         )
         record = self._session.scalar(statement)
         return knowledge_source_from_record(record) if record is not None else None
+
+    def list_for_workspace(self, workspace_id: WorkspaceId) -> list[KnowledgeSource]:
+        statement = select(KnowledgeSourceRecord).where(
+            KnowledgeSourceRecord.workspace_id == workspace_id.value
+        ).order_by(KnowledgeSourceRecord.id)
+        return [knowledge_source_from_record(record) for record in self._session.scalars(statement)]
 
     def save_transition(
         self,

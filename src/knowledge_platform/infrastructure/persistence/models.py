@@ -84,6 +84,21 @@ class KnowledgeSourceRecord(PlatformBase):
     lifecycle: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AssistantKnowledgeSourceRecord(PlatformBase):
+    """Workspace-scoped assistant/source authorization row."""
+
+    __tablename__ = "assistant_knowledge_sources"
+    __table_args__ = ({"schema": "platform"},)
+
+    workspace_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    assistant_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), ForeignKey("platform.assistants.id"), primary_key=True
+    )
+    knowledge_source_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), ForeignKey("platform.knowledge_sources.id"), primary_key=True
+    )
+
+
 class ConversationRecord(PlatformBase):
     """ORM record for ``platform.conversations``."""
 

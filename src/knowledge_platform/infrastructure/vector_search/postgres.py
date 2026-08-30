@@ -69,6 +69,20 @@ class DocumentRepresentationRepository:
             .values(state=RepresentationState.RETIRED.value)
         )
 
+    def retire_active_for_source(
+        self, *, source_id: KnowledgeSourceId, workspace_id: WorkspaceId
+    ) -> None:
+        """Remove a source's representations from the searchable ACTIVE set."""
+        self._session.execute(
+            update(DocumentRepresentationRecord)
+            .where(
+                DocumentRepresentationRecord.source_id == source_id.value,
+                DocumentRepresentationRecord.workspace_id == workspace_id.value,
+                DocumentRepresentationRecord.state == RepresentationState.ACTIVE.value,
+            )
+            .values(state=RepresentationState.RETIRED.value)
+        )
+
 
 class PgvectorDocumentSearchAdapter:
     """Parameterized ACTIVE-only vector search boundary."""
