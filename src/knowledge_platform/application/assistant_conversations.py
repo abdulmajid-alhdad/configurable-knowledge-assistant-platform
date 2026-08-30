@@ -3,9 +3,11 @@
 from typing import Protocol
 
 from knowledge_platform.application.document_rag import DocumentRagService
+from knowledge_platform.modules.evidence_grounding.domain.contracts import GroundingOutcome
 from knowledge_platform.modules.conversation.domain.conversation import Conversation
 from knowledge_platform.modules.conversation.domain.identifiers import ConversationId
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
+from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
 from knowledge_platform.modules.workspace_assistant.domain.assistant import Assistant
 from knowledge_platform.modules.workspace_assistant.domain.identifiers import AssistantId, WorkspaceId
 
@@ -15,7 +17,7 @@ class AssistantRepositoryPort(Protocol):
 
 
 class SourceRepositoryPort(Protocol):
-    def list_for_workspace(self, workspace_id: WorkspaceId) -> list[object]: ...
+    def list_for_workspace(self, workspace_id: WorkspaceId) -> list[KnowledgeSource]: ...
 
 
 class AssociationRepositoryPort(Protocol):
@@ -48,7 +50,8 @@ class AssistantConversationService:
     def get(self, *, workspace_id: WorkspaceId, conversation_id: ConversationId) -> Conversation | None:
         return self._conversations.get(conversation_id=conversation_id, workspace_id=workspace_id)
 
-    def ask(self, *, workspace_id: WorkspaceId, conversation_id: ConversationId, question: str):
+    def ask(self, *, workspace_id: WorkspaceId, conversation_id: ConversationId,
+            question: str) -> GroundingOutcome:
         conversation = self.get(workspace_id=workspace_id, conversation_id=conversation_id)
         if conversation is None:
             raise LookupError("conversation not found")
