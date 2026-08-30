@@ -4,11 +4,11 @@ from collections.abc import Callable, Iterable
 from typing import Any, Protocol
 
 from knowledge_platform.application.document_ingestion import DocumentIngestionService
-from knowledge_platform.infrastructure.documents.parsers import DocumentParserPort
 from knowledge_platform.modules.document_knowledge.artifacts import (
     OriginalArtifact,
     OriginalArtifactStorePort,
 )
+from knowledge_platform.modules.document_knowledge.ports import DocumentParserPort
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
 from knowledge_platform.modules.workspace_assistant.domain.identifiers import WorkspaceId

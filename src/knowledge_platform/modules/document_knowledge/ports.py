@@ -12,6 +12,21 @@ class EmbeddingVector:
     values: tuple[float, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class ParsedDocumentSection:
+    content: str
+    provenance_locator: str
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedDocument:
+    sections: tuple[ParsedDocumentSection, ...]
+
+
+class DocumentParserPort(Protocol):
+    def parse(self, content: bytes, *, reference: str = "document") -> ParsedDocument: ...
+
+
 class EmbeddingGatewayPort(Protocol):
     def embed_query(self, text: str) -> EmbeddingVector: ...
     def embed_documents(self, texts: tuple[str, ...]) -> tuple[EmbeddingVector, ...]: ...

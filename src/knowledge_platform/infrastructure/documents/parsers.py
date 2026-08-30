@@ -4,25 +4,15 @@ import importlib
 import json
 import re
 import zipfile
-from dataclasses import dataclass
 from io import BytesIO
-from typing import Protocol, cast
+from typing import cast
 from xml.etree import ElementTree
 
-
-@dataclass(frozen=True, slots=True)
-class ParsedDocumentSection:
-    content: str
-    provenance_locator: str
-
-
-@dataclass(frozen=True, slots=True)
-class ParsedDocument:
-    sections: tuple[ParsedDocumentSection, ...]
-
-
-class DocumentParserPort(Protocol):
-    def parse(self, content: bytes, *, reference: str = "document") -> ParsedDocument: ...
+from knowledge_platform.modules.document_knowledge.ports import (
+    DocumentParserPort,
+    ParsedDocument,
+    ParsedDocumentSection,
+)
 
 
 def _ensure(sections: list[ParsedDocumentSection]) -> ParsedDocument:
