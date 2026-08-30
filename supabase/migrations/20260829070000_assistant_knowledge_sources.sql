@@ -15,7 +15,21 @@ create policy assistant_knowledge_sources_runtime_select
     using (workspace_id = current_setting('app.workspace_id', true)::uuid);
 create policy assistant_knowledge_sources_runtime_insert
     on platform.assistant_knowledge_sources for insert to knowledge_platform_runtime
-    with check (workspace_id = current_setting('app.workspace_id', true)::uuid);
+    with check (
+        workspace_id = current_setting('app.workspace_id', true)::uuid
+        and exists (
+            select 1
+            from platform.assistants as a
+            where a.id = assistant_knowledge_sources.assistant_id
+              and a.workspace_id = assistant_knowledge_sources.workspace_id
+        )
+        and exists (
+            select 1
+            from platform.knowledge_sources as s
+            where s.id = assistant_knowledge_sources.knowledge_source_id
+              and s.workspace_id = assistant_knowledge_sources.workspace_id
+        )
+    );
 create policy assistant_knowledge_sources_runtime_delete
     on platform.assistant_knowledge_sources for delete to knowledge_platform_runtime
     using (workspace_id = current_setting('app.workspace_id', true)::uuid);
