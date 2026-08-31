@@ -62,7 +62,9 @@ class AssistantConversationService:
         )
         return conversation
 
-    def get(self, *, workspace_id: WorkspaceId, conversation_id: ConversationId) -> Conversation | None:
+    def get(
+        self, *, workspace_id: WorkspaceId, conversation_id: ConversationId
+    ) -> Conversation | None:
         return self._conversations.get(conversation_id=conversation_id, workspace_id=workspace_id)
 
     def ask(self, *, workspace_id: WorkspaceId, conversation_id: ConversationId,

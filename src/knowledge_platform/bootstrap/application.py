@@ -43,8 +43,8 @@ from knowledge_platform.infrastructure.vector_search.postgres import (
     DocumentRepresentationRepository,
     PgvectorDocumentSearchAdapter,
 )
-from knowledge_platform.modules.document_knowledge.artifacts import OriginalArtifact
 from knowledge_platform.modules.conversation.domain.identifiers import ConversationId
+from knowledge_platform.modules.document_knowledge.artifacts import OriginalArtifact
 from knowledge_platform.modules.document_knowledge.ports import VectorSearchPort
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
