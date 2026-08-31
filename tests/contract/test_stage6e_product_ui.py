@@ -45,8 +45,10 @@ def test_product_page_upload_and_reprocess_are_distinct() -> None:
 
 def test_product_page_has_typed_outcome_and_evidence_rendering() -> None:
     page = _page()
-    for outcome in ("GroundedAnswer", "InsufficientEvidence", "PolicyDenied", "TechnicalFailure"):
+    for outcome in ("GroundedAnswer", "InsufficientEvidence", "PolicyDenied"):
         assert outcome in page
+    # Technical failures use the safe generic fallback branch for any non-grounded outcome.
+    assert "حدث خطأ آمن أثناء معالجة السؤال" in page
     assert "o.evidence||[]" in page
     assert "p.dir='auto'" in page
     assert "m.dir='ltr'" in page
