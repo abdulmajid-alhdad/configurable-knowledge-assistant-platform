@@ -7,19 +7,18 @@ from knowledge_platform.application.assistants import AssistantService
 from knowledge_platform.application.knowledge_ingestion import KnowledgeIngestionService
 from knowledge_platform.application.knowledge_sources import KnowledgeSourceService
 from knowledge_platform.application.workspaces import WorkspaceService
-from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
-from knowledge_platform.modules.workspace_assistant.domain.identifiers import WorkspaceId
 from knowledge_platform.modules.document_knowledge.artifacts import OriginalArtifact
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
+from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
+from knowledge_platform.modules.workspace_assistant.domain.identifiers import WorkspaceId
+
+from .manifest import DEFINITION, artifact_path
 
 
 class ArtifactStorePort(Protocol):
     def store(self, *, workspace_id: WorkspaceId, source_id: KnowledgeSourceId,
               chunks: Iterable[bytes], filename: str, media_type: str | None,
               max_bytes: int) -> OriginalArtifact: ...
-
-from .manifest import DEFINITION, artifact_path
-
 
 class YemenHistoryReferenceProvisioner:
     """Explicit, caller-invoked setup; never used during normal startup."""

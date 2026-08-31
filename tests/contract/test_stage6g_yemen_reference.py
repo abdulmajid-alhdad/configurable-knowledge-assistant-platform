@@ -1,16 +1,26 @@
 """Configurability contracts for the Yemen reference package."""
-from knowledge_platform.reference.yemen_history import DEFINITION, artifact_path, build_reference
-from knowledge_platform.reference.yemen_history import YemenHistoryReferenceProvisioner
-from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
-from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
-from knowledge_platform.modules.workspace_assistant.domain.workspace import Workspace
-from knowledge_platform.modules.workspace_assistant.domain.assistant import Assistant
-from knowledge_platform.modules.workspace_assistant.domain.configuration import ModelConfiguration, RetrievalConfiguration
 from knowledge_platform.application.document_rag import DocumentRagService
 from knowledge_platform.infrastructure.vector_search.store import VectorChunk, VectorSearchStore
 from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
+from knowledge_platform.modules.evidence_grounding.domain.contracts import (
+    GroundedAnswer,
+    InsufficientEvidence,
+)
+from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
+from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
+from knowledge_platform.modules.workspace_assistant.domain.assistant import Assistant
+from knowledge_platform.modules.workspace_assistant.domain.configuration import (
+    ModelConfiguration,
+    RetrievalConfiguration,
+)
 from knowledge_platform.modules.workspace_assistant.domain.security import DataEgressPolicy
-from knowledge_platform.modules.evidence_grounding.domain.contracts import GroundedAnswer, InsufficientEvidence
+from knowledge_platform.modules.workspace_assistant.domain.workspace import Workspace
+from knowledge_platform.reference.yemen_history import (
+    DEFINITION,
+    YemenHistoryReferenceProvisioner,
+    artifact_path,
+    build_reference,
+)
 
 
 def test_reference_is_declarative_and_has_supported_artifact() -> None:
@@ -34,7 +44,10 @@ def test_reference_provisioner_uses_generic_boundaries() -> None:
     assistant = Assistant.create(
         workspace_id=workspace.id, name=DEFINITION.assistant_name,
         description="reference", instructions=DEFINITION.assistant_instructions,
-        language="ar", model_configuration=ModelConfiguration(provider="remote", model_reference="configured"),
+        language="ar",
+        model_configuration=ModelConfiguration(
+            provider="remote", model_reference="configured"
+        ),
         retrieval_configuration=RetrievalConfiguration(),
     )
     source = KnowledgeSource.create(
@@ -84,7 +97,12 @@ def test_yemen_reference_supported_question_returns_grounded_answer() -> None:
     workspace, assistant, source, scope = build_reference()
     store = VectorSearchStore()
     content = artifact_path().read_text(encoding="utf-8").splitlines()[2]
-    store.add(VectorChunk(workspace.id, source.id, content, "yemen_history.md#1", EmbeddingVector((1.0, 0.0))))
+    store.add(
+        VectorChunk(
+            workspace.id, source.id, content, "yemen_history.md#1",
+            EmbeddingVector((1.0, 0.0)),
+        )
+    )
 
     class Embeddings:
         def embed_query(self, text: str) -> EmbeddingVector:
@@ -123,7 +141,10 @@ def test_yemen_reference_unsupported_and_detached_questions_are_insufficient() -
     rag = DocumentRagService(
         embeddings=Embeddings(), vectors=store, model=Model(), egress=DataEgressPolicy(True)
     )
-    assert isinstance(rag.ask(workspace_id=workspace.id, assistant_id=assistant.id,
-                              question="unsupported", source_ids=frozenset({source.id})), InsufficientEvidence)
+    unsupported = rag.ask(
+        workspace_id=workspace.id, assistant_id=assistant.id,
+        question="unsupported", source_ids=frozenset({source.id})
+    )
+    assert isinstance(unsupported, InsufficientEvidence)
     assert isinstance(rag.ask(workspace_id=workspace.id, assistant_id=assistant.id,
                               question="صنعاء", source_ids=frozenset()), InsufficientEvidence)
