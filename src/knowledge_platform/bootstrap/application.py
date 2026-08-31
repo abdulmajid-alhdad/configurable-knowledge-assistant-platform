@@ -16,8 +16,8 @@ from knowledge_platform.application.assistant_knowledge_scope import AssistantKn
 from knowledge_platform.application.assistants import AssistantService
 from knowledge_platform.application.document_ingestion import DocumentIngestionService
 from knowledge_platform.application.document_rag import DocumentRagService
-from knowledge_platform.application.evaluation_catalog import EvaluationCatalogService
 from knowledge_platform.application.document_removal import DocumentRemovalService
+from knowledge_platform.application.evaluation_catalog import EvaluationCatalogService
 from knowledge_platform.application.knowledge_ingestion import KnowledgeIngestionService
 from knowledge_platform.application.knowledge_sources import KnowledgeSourceService
 from knowledge_platform.application.workspaces import WorkspaceService
@@ -26,8 +26,8 @@ from knowledge_platform.config.runtime import RuntimeSettings
 from knowledge_platform.infrastructure.credentials.environment import EnvironmentCredentialResolver
 from knowledge_platform.infrastructure.documents.artifacts import FilesystemOriginalArtifactStore
 from knowledge_platform.infrastructure.documents.parsers import parser_for_suffix
-from knowledge_platform.infrastructure.evaluation.catalog import FilesystemSuiteCatalog
 from knowledge_platform.infrastructure.embeddings.remote import RemoteEmbeddingAdapter
+from knowledge_platform.infrastructure.evaluation.catalog import FilesystemSuiteCatalog
 from knowledge_platform.infrastructure.models.remote import RemoteModelAdapter
 from knowledge_platform.infrastructure.persistence.database import (
     create_platform_engine,

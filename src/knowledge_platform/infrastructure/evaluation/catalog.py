@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from knowledge_platform.application.evaluation_catalog import SuiteSummary
+
 from .suites import load_suite
 
 
