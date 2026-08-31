@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from knowledge_platform.application.document_rag import DocumentRagService
 from knowledge_platform.delivery.conversation_api import create_conversation_router
+from knowledge_platform.delivery.evaluation_api import create_evaluation_router
 from knowledge_platform.delivery.product_api import create_management_router
 from knowledge_platform.infrastructure.vector_search.store import VectorChunk, VectorSearchStore
 from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
@@ -109,6 +110,7 @@ def create_app(
     if runtime is not None:
         application.include_router(create_management_router(runtime.management_services()))
         application.include_router(create_conversation_router(runtime.management_services()))
+        application.include_router(create_evaluation_router(runtime.evaluation_catalog()))
 
     @application.get("/health")
     def health() -> dict[str, str]:
@@ -175,7 +177,7 @@ PRODUCT_HTML = """<!doctype html>
 <section class="card stack"><h2 class="section-title">مصادر المعرفة</h2><div id="sources" class="list" aria-live="polite"></div><input id="sourceName" placeholder="اسم المصدر"><select id="sourceKind"><option value="file">ملف</option><option value="url">رابط</option></select><button id="registerSource">تسجيل مصدر</button><input id="file" type="file" accept=".txt,.md,.markdown,.json,.docx,.pdf"><button id="upload" class="secondary">رفع الملف</button><button id="process" class="secondary">معالجة / إعادة معالجة</button><p class="muted">إعادة المعالجة تستخدم الملف المحفوظ ولا تتطلب رفعه مرة أخرى.</p><p id="sourceState" class="muted" aria-live="polite"></p></section></aside>
 <section class="stack"><section class="card"><h2 class="section-title">نطاق معرفة المساعد</h2><div id="scope" class="list"></div><p id="scopeState" class="muted" aria-live="polite"></p></section><section class="card chat"><div id="messages" class="messages" aria-live="polite"><p class="muted">أنشئ محادثة لطرح سؤال على مصادرك.</p></div><div class="row"><button id="conversation">محادثة جديدة</button><textarea id="question" rows="2" placeholder="اكتب سؤالك هنا…" aria-label="السؤال"></textarea><button id="ask">اسأل المساعد</button></div><div id="result" aria-live="polite"></div></section></section></main></div>
 <script>
-const $=id=>document.getElementById(id);let wid=localStorage.getItem('workspace_id')||'',aid='',sid='',cid='';$('workspace').value=wid;
+const $=id=>document.getElementById(id);let wid=localStorage.getItem('workspace_id')||'',aid='',sid='',cid='';$('workspace').value=wid;document.querySelector('.shell').insertAdjacentHTML('beforeend','<section class="card"><h2 class="section-title">التقييم والتشغيل</h2><div id="ops" class="muted" aria-live="polite">جارٍ تحميل الحالة…</div></section>');
 async function call(url,opts={}){const r=await fetch(url,opts);if(!r.ok)throw Error('request failed');return r.json()}
 function fail(el){$(el).textContent='تعذر إكمال الطلب حاليًا. حاول مرة أخرى.'}
 async function load(){wid=$('workspace').value.trim();if(!wid)return;try{const w=await call('/api/workspaces/'+wid);localStorage.setItem('workspace_id',wid);$('workspaceState').textContent='مساحة العمل: '+w.name;const as=await call('/api/workspaces/'+wid+'/assistants');$('assistants').replaceChildren(...as.map(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.name;return o}));aid=as[0]?.id||'';const ss=await call('/api/workspaces/'+wid+'/sources');renderSources(ss)}catch(_){fail('workspaceState')}}
@@ -187,5 +189,6 @@ $('upload').onclick=async()=>{const f=$('file').files[0];if(!f||!sid)return;try{
 $('process').onclick=async()=>{if(!sid)return;try{await call('/api/workspaces/'+wid+'/sources/'+sid+'/process',{method:'POST'});$('sourceState').textContent='اكتملت المعالجة.';await load()}catch(_){fail('sourceState')}};
 $('conversation').onclick=async()=>{if(!wid||!aid)return;try{const c=await call('/api/workspaces/'+wid+'/assistants/'+aid+'/conversations',{method:'POST'});cid=c.id;$('messages').replaceChildren();}catch(_){fail('result')}};
 $('ask').onclick=async()=>{if(!cid||!$('question').value.trim())return;$('ask').disabled=true;try{const o=await call('/api/workspaces/'+wid+'/conversations/'+cid+'/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question:$('question').value})});const r=$('result');r.replaceChildren();const h=document.createElement('h3');h.textContent=o.outcome;r.append(h);if(o.answer){const p=document.createElement('p');p.dir='auto';p.textContent=o.answer;r.append(p)}(o.evidence||[]).forEach(e=>{const d=document.createElement('div');d.className='evidence';const p=document.createElement('p');p.dir='auto';p.textContent=e.content;const m=document.createElement('div');m.className='tech';m.dir='ltr';m.textContent=e.provenance_locator+' · '+e.source_id;d.append(p,m);r.append(d)});if(o.outcome!=='GroundedAnswer'&&!o.answer){const p=document.createElement('p');p.textContent=o.outcome==='PolicyDenied'?'تعذر استخدام المحتوى بسبب سياسة مشاركة البيانات.':o.outcome==='InsufficientEvidence'?'لا توجد أدلة كافية في المصادر المرتبطة.':'تعذر إكمال الطلب حاليًا. حاول مرة أخرى.';r.append(p)}}catch(_){fail('result')}finally{$('ask').disabled=false}};
-if(wid)load();
+async function loadOps(){try{const h=await call('/health'),r=await call('/ready'),s=await call('/api/evaluation/suites');$('ops').textContent='Health: '+h.status+' · Ready: '+r.status+' · Suites: '+s.length}catch(_){$('ops').textContent='تعذر تحميل حالة التشغيل.'}}
+if(wid)load();loadOps();
 </script></body></html>"""
