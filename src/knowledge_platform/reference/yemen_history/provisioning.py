@@ -1,4 +1,7 @@
 """Deliberate provisioning recipe for the Yemen reference configuration."""
+from collections.abc import Iterable
+from typing import Protocol
+
 from knowledge_platform.application.assistant_knowledge_scope import AssistantKnowledgeScopeService
 from knowledge_platform.application.assistants import AssistantService
 from knowledge_platform.application.knowledge_ingestion import KnowledgeIngestionService
@@ -6,6 +9,14 @@ from knowledge_platform.application.knowledge_sources import KnowledgeSourceServ
 from knowledge_platform.application.workspaces import WorkspaceService
 from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
 from knowledge_platform.modules.workspace_assistant.domain.identifiers import WorkspaceId
+from knowledge_platform.modules.document_knowledge.artifacts import OriginalArtifact
+from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
+
+
+class ArtifactStorePort(Protocol):
+    def store(self, *, workspace_id: WorkspaceId, source_id: KnowledgeSourceId,
+              chunks: Iterable[bytes], filename: str, media_type: str | None,
+              max_bytes: int) -> OriginalArtifact: ...
 
 from .manifest import DEFINITION, artifact_path
 
@@ -14,7 +25,7 @@ class YemenHistoryReferenceProvisioner:
     """Explicit, caller-invoked setup; never used during normal startup."""
 
     def __init__(self, *, workspaces: WorkspaceService, assistants: AssistantService,
-                 sources: KnowledgeSourceService, artifacts: object,
+                 sources: KnowledgeSourceService, artifacts: ArtifactStorePort,
                  ingestion: KnowledgeIngestionService, scope: AssistantKnowledgeScopeService,
                  assistant_repository: object, source_repository: object,
                  representation_repository: object, embedding_profile: str = "reference") -> None:
