@@ -5,6 +5,10 @@ from typing import Protocol
 from knowledge_platform.application.assistant_knowledge_scope import AssistantKnowledgeScopeService
 from knowledge_platform.application.assistants import AssistantService
 from knowledge_platform.application.knowledge_ingestion import KnowledgeIngestionService
+from knowledge_platform.application.knowledge_ingestion import (
+    RepresentationRepositoryPort,
+    SourceRepositoryPort,
+)
 from knowledge_platform.application.knowledge_sources import KnowledgeSourceService
 from knowledge_platform.application.workspaces import WorkspaceService
 from knowledge_platform.modules.document_knowledge.artifacts import OriginalArtifact
@@ -26,8 +30,9 @@ class YemenHistoryReferenceProvisioner:
     def __init__(self, *, workspaces: WorkspaceService, assistants: AssistantService,
                  sources: KnowledgeSourceService, artifacts: ArtifactStorePort,
                  ingestion: KnowledgeIngestionService, scope: AssistantKnowledgeScopeService,
-                 assistant_repository: object, source_repository: object,
-                 representation_repository: object, embedding_profile: str = "reference") -> None:
+                 assistant_repository: object, source_repository: SourceRepositoryPort,
+                 representation_repository: RepresentationRepositoryPort,
+                 embedding_profile: str = "reference") -> None:
         self._workspaces, self._assistants, self._sources = workspaces, assistants, sources
         self._artifacts, self._ingestion, self._scope = artifacts, ingestion, scope
         self._assistant_repository = assistant_repository

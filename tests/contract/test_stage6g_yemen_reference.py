@@ -83,11 +83,21 @@ def test_reference_provisioner_uses_generic_boundaries() -> None:
         def attach(self, **kwargs: object) -> None:
             calls.append("scope")
 
+    class SourceRepository:
+        def save_transition(self, **kwargs: object) -> None:
+            pass
+
+    class RepresentationRepository:
+        def add(self, representation: object) -> None:
+            pass
+        def activate(self, **kwargs: object) -> None:
+            pass
+
     provisioner = YemenHistoryReferenceProvisioner(
         workspaces=Workspaces(), assistants=Assistants(), sources=Sources(),
         artifacts=Artifacts(), ingestion=Ingestion(), scope=Scope(),
-        assistant_repository=object(), source_repository=object(),
-        representation_repository=object(),
+        assistant_repository=object(), source_repository=SourceRepository(),
+        representation_repository=RepresentationRepository(),
     )
     provisioner.provision()
     assert calls == ["workspace", "assistant", "source", "artifact", "ingestion", "scope"]
