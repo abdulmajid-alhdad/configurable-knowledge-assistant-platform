@@ -47,8 +47,9 @@ def test_product_page_has_typed_outcome_and_evidence_rendering() -> None:
     page = _page()
     for outcome in ("GroundedAnswer", "InsufficientEvidence", "PolicyDenied"):
         assert outcome in page
-    # Technical failures use the safe generic fallback branch for any non-grounded outcome.
-    assert "حدث خطأ آمن أثناء معالجة السؤال" in page
+    # Technical failures use the safe generic fallback branch for non-grounded outcomes.
+    assert "if(o.outcome!=='GroundedAnswer'&&!o.answer)" in page
+    assert "p.textContent=o.reason" not in page
     assert "o.evidence||[]" in page
     assert "p.dir='auto'" in page
     assert "m.dir='ltr'" in page
