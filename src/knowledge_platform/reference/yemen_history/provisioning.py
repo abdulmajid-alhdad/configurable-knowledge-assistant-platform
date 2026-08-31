@@ -4,8 +4,8 @@ from typing import Protocol
 
 from knowledge_platform.application.assistant_knowledge_scope import AssistantKnowledgeScopeService
 from knowledge_platform.application.assistants import AssistantService
-from knowledge_platform.application.knowledge_ingestion import KnowledgeIngestionService
 from knowledge_platform.application.knowledge_ingestion import (
+    KnowledgeIngestionService,
     RepresentationRepositoryPort,
     SourceRepositoryPort,
 )
