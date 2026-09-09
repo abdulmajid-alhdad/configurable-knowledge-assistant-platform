@@ -1,5 +1,7 @@
 """Generic test bridge from ingested representations to VectorSearchPort."""
+
 from math import sqrt
+
 from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
 
 
@@ -16,10 +18,15 @@ class IngestedRepresentationSearch:
             for item in self.representations
         ]
 
-    def search(self, *, workspace_id, source_ids, query: EmbeddingVector, limit: int = 5) -> tuple[object, ...]:
+    def search(
+        self, *, workspace_id, source_ids, query: EmbeddingVector, limit: int = 5
+    ) -> tuple[object, ...]:
         rows = []
         for representation in self.representations:
-            if representation.workspace_id != workspace_id or representation.state.value != "ACTIVE":
+            if (
+                representation.workspace_id != workspace_id
+                or representation.state.value != "ACTIVE"
+            ):
                 continue
             if representation.source_id not in source_ids:
                 continue
@@ -35,4 +42,6 @@ def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
     if not left or len(left) != len(right):
         return 0.0
     denominator = sqrt(sum(value * value for value in left) * sum(value * value for value in right))
-    return sum(a * b for a, b in zip(left, right, strict=True)) / denominator if denominator else 0.0
+    return (
+        sum(a * b for a, b in zip(left, right, strict=True)) / denominator if denominator else 0.0
+    )

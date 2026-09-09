@@ -6,7 +6,6 @@ from knowledge_platform.modules.access_control.domain import (
     Permission,
 )
 
-
 ROOT = Path(__file__).parents[2]
 MIGRATION = ROOT / "supabase/migrations/20260904225858_stage7b_administrative_control.sql"
 UI = ROOT / "src/knowledge_platform/delivery/saas_ui.py"
@@ -61,12 +60,8 @@ def test_append_paths_are_security_definer_and_not_public() -> None:
 
 def test_governance_is_persisted_and_enforced_by_product_delivery() -> None:
     migration = text(MIGRATION)
-    stage1 = text(
-        ROOT / "supabase/migrations/20260906070000_stage1_authority_data_foundation.sql"
-    )
-    delivery = (ROOT / "src/knowledge_platform/delivery/product_api.py").read_text(
-        encoding="utf-8"
-    )
+    stage1 = text(ROOT / "supabase/migrations/20260906070000_stage1_authority_data_foundation.sql")
+    delivery = (ROOT / "src/knowledge_platform/delivery/product_api.py").read_text(encoding="utf-8")
     assert "assistant_creation_enabled" in migration
     assert "set is_active=false where setting_key='assistant_creation_enabled'" in stage1
     assert "assistant_creation_enabled" not in delivery
@@ -78,7 +73,7 @@ def test_governance_is_persisted_and_enforced_by_product_delivery() -> None:
 
 def test_stage7b_api_is_paginated_and_permission_mapped() -> None:
     api, security = text(API), text(SECURITY)
-    assert 'Query(50, ge=1, le=100)' in api
+    assert "Query(50, ge=1, le=100)" in api
     for route, permission in (
         ("/usage", "USAGE_READ"),
         ("/governance", "GOVERNANCE_READ"),
@@ -169,7 +164,9 @@ def test_stage7a_admin_cache_invalidation_and_stale_guard() -> None:
 def test_stage7a_routes_keep_route_host_during_cached_navigation() -> None:
     ui = text(UI)
     assert "if(cached){stage7aRenderAccess" in ui
-    assert "else root.replaceChildren(pageToolbar('إدارة الوصول إلى مساحة العمل.'),localLoading" in ui
+    assert (
+        "else root.replaceChildren(pageToolbar('إدارة الوصول إلى مساحة العمل.'),localLoading" in ui
+    )
     assert "window.location" not in ui
 
 
@@ -181,9 +178,12 @@ def test_administrative_dom_render_contract_and_arabic_permissions() -> None:
     permissions = (
         "workspace.read workspace.manage assistant.read assistant.create assistant.update "
         "knowledge.read knowledge.create knowledge.process knowledge.attach conversation.read "
-        "conversation.ask evaluation.read operations.read settings.read members.read members.manage "
-        "teams.read teams.manage roles.read roles.manage invitations.read invitations.manage usage.read "
-        "governance.read governance.manage audit.read notifications.read notifications.manage"
+        "conversation.ask evaluation.read operations.read settings.read "
+        "members.read members.manage "
+        "teams.read teams.manage roles.read roles.manage "
+        "invitations.read invitations.manage usage.read "
+        "governance.read governance.manage audit.read "
+        "notifications.read notifications.manage"
     ).split()
     assert len(permissions) == 28
     assert all(f"'{code}':" in ui for code in permissions)
@@ -213,7 +213,12 @@ def test_admin_cell_contract_supports_nested_node_arrays_and_invitation_states()
     assert "ADMIN:'المدير'" in ui
     assert "MEMBER:'العضو'" in ui
     assert "VIEWER:'المشاهد'" in ui
-    for status, label in (("pending", "معلقة"), ("accepted", "مقبولة"), ("revoked", "ملغاة"), ("expired", "منتهية")):
+    for status, label in (
+        ("pending", "معلقة"),
+        ("accepted", "مقبولة"),
+        ("revoked", "ملغاة"),
+        ("expired", "منتهية"),
+    ):
         assert f"{status}:'{label}'" in ui
     assert "inv.status==='pending'&&allowed('invitations.manage')" in ui
     assert "stage7aInvitationDisplay" in ui

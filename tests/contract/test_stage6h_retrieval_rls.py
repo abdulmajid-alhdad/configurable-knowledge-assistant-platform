@@ -2,10 +2,10 @@
 
 from unittest.mock import Mock
 
+from knowledge_platform.infrastructure.documents.pipeline import DocumentChunk
 from knowledge_platform.infrastructure.documents.representations import (
     DocumentRepresentation,
 )
-from knowledge_platform.infrastructure.documents.pipeline import DocumentChunk
 from knowledge_platform.infrastructure.vector_search.postgres import (
     DocumentRepresentationRepository,
 )

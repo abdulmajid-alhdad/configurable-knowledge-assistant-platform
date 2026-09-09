@@ -17,7 +17,10 @@ class _Response:
             "choices": [
                 {
                     "message": {
-                        "content": '{"status":"grounded","answer":"grounded answer","evidence_ids":["E1"]}'
+                        "content": (
+                            '{"status":"grounded","answer":"grounded answer",'
+                            '"evidence_ids":["E1"]}'
+                        )
                     }
                 }
             ]
@@ -89,14 +92,12 @@ class _LeakingClient:
         headers: dict[str, str],
         timeout: int,
     ) -> object:
-        raise RuntimeError(
-            "Authorization: Bearer fake-token; prompt=SECRET_PRIVATE_CONTEXT"
-        )
+        raise RuntimeError("Authorization: Bearer fake-token; prompt=SECRET_PRIVATE_CONTEXT")
 
 
 def test_model_transport_failure_is_safe_and_does_not_chain_sensitive_text() -> None:
     with pytest.raises(RuntimeError, match="model provider request failed") as caught:
-            RemoteModelAdapter(
+        RemoteModelAdapter(
             endpoint="https://model.test/v1/chat/completions",
             model_reference="model-reference",
             api_key="fake-token",
@@ -147,18 +148,23 @@ def test_model_valid_insufficient_json_parses_to_typed_disposition() -> None:
 
                 def json(self) -> dict[str, object]:
                     return {
-                        "choices": [{"message": {"content":
-                            '{"status":"insufficient","answer":null,"evidence_ids":[]}'
-                        }}]
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": (
+                                        '{"status":"insufficient","answer":null,'
+                                        '"evidence_ids":[]}'
+                                    )
+                                }
+                            }
+                        ]
                     }
 
             return Response()
 
     result = RemoteModelAdapter(
         endpoint="https://model.test", model_reference="model", api_key="token", client=Client()
-    ).generate(
-        question="question", context="context", assistant_instructions="Answer in Arabic."
-    )
+    ).generate(question="question", context="context", assistant_instructions="Answer in Arabic.")
     assert isinstance(result, ModelInsufficientEvidence)
 
 

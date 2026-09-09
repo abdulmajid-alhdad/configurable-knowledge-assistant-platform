@@ -19,8 +19,7 @@ class _FailingConversationServices:
 
     def ask_conversation(self, workspace_id: UUID, conversation_id: UUID, question: str) -> object:
         raise RuntimeError(
-            "SECRET_QUESTION SECRET_RETRIEVED_CHUNK SECRET_PROMPT "
-            "SECRET_TOKEN SECRET_SQL_PARAMETER"
+            "SECRET_QUESTION SECRET_RETRIEVED_CHUNK SECRET_PROMPT SECRET_TOKEN SECRET_SQL_PARAMETER"
         )
 
 
@@ -41,9 +40,7 @@ def test_ask_failure_preserves_http_contract_and_sanitizes_logs(
     assert response.status_code == 500
     assert response.json() == {"detail": "request could not be completed"}
     record = next(
-        item
-        for item in caplog.records
-        if item.getMessage().startswith("conversation_ask_failed")
+        item for item in caplog.records if item.getMessage().startswith("conversation_ask_failed")
     )
     assert record.workspace_id == str(workspace_id)
     assert record.conversation_id == str(conversation_id)
@@ -73,10 +70,10 @@ def test_ask_failure_logs_only_structured_database_diagnostics(
         orig = None
 
     class Services(_FailingConversationServices):
-        def ask_conversation(self, workspace_id: UUID, conversation_id: UUID, question: str) -> object:
-            raise DatabaseError(
-                "SECRET_SQL_PARAMETER SECRET_QUESTION SECRET_TOKEN"
-            )
+        def ask_conversation(
+            self, workspace_id: UUID, conversation_id: UUID, question: str
+        ) -> object:
+            raise DatabaseError("SECRET_SQL_PARAMETER SECRET_QUESTION SECRET_TOKEN")
 
     app = FastAPI()
     app.include_router(create_conversation_router(Services()))
@@ -91,9 +88,7 @@ def test_ask_failure_logs_only_structured_database_diagnostics(
 
     assert response.status_code == 500
     record = next(
-        item
-        for item in caplog.records
-        if item.getMessage().startswith("conversation_ask_failed")
+        item for item in caplog.records if item.getMessage().startswith("conversation_ask_failed")
     )
     assert record.sqlstate == "23505"
     assert record.constraint_name == "messages_pkey"

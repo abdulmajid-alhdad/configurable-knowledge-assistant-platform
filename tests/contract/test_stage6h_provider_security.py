@@ -16,7 +16,9 @@ class _RecordingClient:
     def __init__(self) -> None:
         self.headers: dict[str, str] | None = None
 
-    def post(self, endpoint: str, *, json: object, headers: dict[str, str], timeout: int) -> _Response:
+    def post(
+        self, endpoint: str, *, json: object, headers: dict[str, str], timeout: int
+    ) -> _Response:
         self.headers = headers
         return _Response()
 

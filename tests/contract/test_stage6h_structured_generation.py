@@ -16,7 +16,10 @@ from knowledge_platform.modules.evidence_grounding.domain.contracts import (
 )
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.retrieval_orchestration.domain.contracts import RetrievedContent
-from knowledge_platform.modules.workspace_assistant.domain.identifiers import AssistantId, WorkspaceId
+from knowledge_platform.modules.workspace_assistant.domain.identifiers import (
+    AssistantId,
+    WorkspaceId,
+)
 from knowledge_platform.modules.workspace_assistant.domain.security import DataEgressPolicy
 
 

@@ -14,8 +14,8 @@ from knowledge_platform.modules.workspace_assistant.domain.configuration import 
     ModelConfiguration,
     RetrievalConfiguration,
 )
-from knowledge_platform.modules.workspace_assistant.domain.security import DataEgressPolicy
 from knowledge_platform.modules.workspace_assistant.domain.identifiers import WorkspaceId
+from knowledge_platform.modules.workspace_assistant.domain.security import DataEgressPolicy
 from knowledge_platform.modules.workspace_assistant.domain.workspace import Workspace
 from knowledge_platform.reference.yemen_history import (
     DEFINITION,

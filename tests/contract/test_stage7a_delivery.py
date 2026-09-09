@@ -56,7 +56,11 @@ class FakeAccess:
         assert user == self.user
 
     def require(self, user: UUID, workspace: UUID, permission: Permission) -> None:
-        assert user == self.user.id and workspace == self.workspace and isinstance(permission, Permission)
+        assert (
+            user == self.user.id
+            and workspace == self.workspace
+            and isinstance(permission, Permission)
+        )
 
     def discover_workspaces(self, user: UUID) -> list[dict[str, object]]:
         assert user == self.user.id
@@ -107,8 +111,9 @@ def app_client(
     app = FastAPI()
     app.include_router(create_auth_router(auth, access, secure=False))  # type: ignore[arg-type]
     app.include_router(create_access_router(access))  # type: ignore[arg-type]
-    app.add_middleware(ControlPlaneSecurityMiddleware, auth=auth, access=access,
-                       cookie_secure=False)
+    app.add_middleware(
+        ControlPlaneSecurityMiddleware, auth=auth, access=access, cookie_secure=False
+    )
     app.get("/app")(lambda: {"ok": True})
     return TestClient(app, base_url="http://testserver"), workspace
 
@@ -121,8 +126,11 @@ def test_protected_app_and_login_contract() -> None:
 
 def test_sign_in_me_discovery_and_sign_out_cookie_contract() -> None:
     client, workspace = app_client()
-    response = client.post("/api/auth/sign-in", headers={"origin": "http://testserver"},
-                           json={"email": "owner@example.com", "password": "secret"})
+    response = client.post(
+        "/api/auth/sign-in",
+        headers={"origin": "http://testserver"},
+        json={"email": "owner@example.com", "password": "secret"},
+    )
     assert response.status_code == 200
     assert response.cookies.get("kp_access") == "access"
     assert response.json().get("access_token") is None
@@ -149,9 +157,7 @@ def test_post_login_destination_prioritizes_canonical_system_authority() -> None
         workspace,
         system_permissions=frozenset({"system_access.read"}),
     )
-    workspace_manager = FakeAccess(
-        user, workspace, workspace_role="WORKSPACE_MANAGER"
-    )
+    workspace_manager = FakeAccess(user, workspace, workspace_role="WORKSPACE_MANAGER")
     member = FakeAccess(user, workspace, workspace_role="MEMBER")
     no_authority = FakeAccess(user, workspace, has_workspace=False)
 

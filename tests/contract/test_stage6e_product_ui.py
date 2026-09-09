@@ -8,9 +8,7 @@ from knowledge_platform.delivery.app import create_app
 
 def _page() -> str:
     route = next(
-        route
-        for route in create_app().routes
-        if getattr(route, "path", None) == "/app/acceptance"
+        route for route in create_app().routes if getattr(route, "path", None) == "/app/acceptance"
     )
     return cast(Callable[[], str], route.endpoint)()
 
@@ -52,7 +50,10 @@ def test_product_page_renders_and_updates_assistant_knowledge_scope() -> None:
     assert "اختر مساعدًا لعرض نطاق المعرفة." in page
     assert "لا توجد مصادر معرفة في مساحة العمل." in page
     assert "method:isAttached?'DELETE':'POST'" in page
-    assert "body:" not in page[page.index("method:isAttached?"):page.index("method:isAttached?")+100]
+    assert (
+        "body:"
+        not in page[page.index("method:isAttached?") : page.index("method:isAttached?") + 100]
+    )
 
 
 def test_product_page_upload_and_reprocess_are_distinct() -> None:
