@@ -6,6 +6,9 @@ MIGRATION = ROOT / "supabase/migrations/20260906010000_stage7c_commercial_admini
 STAGE7A_MIGRATION = ROOT / "supabase/migrations/20260904184807_stage7a_identity_access_control.sql"
 STAGE7B_MIGRATION = ROOT / "supabase/migrations/20260904225858_stage7b_administrative_control.sql"
 SERVICE = ROOT / "src/knowledge_platform/infrastructure/persistence/commercial.py"
+CREDENTIALS_MIGRATION = (
+    ROOT / "supabase/migrations/20260910004757_system_credentials_control_plane.sql"
+)
 ACCESS = ROOT / "src/knowledge_platform/infrastructure/persistence/access_control.py"
 ACCESS_API = ROOT / "src/knowledge_platform/delivery/access_control_api.py"
 BOOTSTRAP = ROOT / "src/knowledge_platform/bootstrap/application.py"
@@ -203,18 +206,45 @@ def test_provider_and_credential_manage_permissions_have_real_capabilities() -> 
 
 
 def test_credential_contract_is_reference_only_and_non_disclosing() -> None:
-    service, sql = read(SERVICE), read(MIGRATION)
+    service, sql = read(SERVICE), read(CREDENTIALS_MIGRATION)
     list_query = service.split("def credentials", 1)[1].split(
         "def save_credential_reference", 1
     )[0]
-    assert "secret_reference" in list_query
+    assert "platform.list_credential_references(:workspace)" in list_query
+    assert "platform.credential_references" not in list_query
+    assert "secret_reference" not in list_query
     assert "reference_type" in list_query
-    assert "env:" in service and "vault:" in service
+    assert "returns table(" in sql
+    assert "when credential.secret_reference like 'env:%' then 'env'" in sql
+    assert "when credential.secret_reference like 'vault:%' then 'vault'" in sql
+    listing = sql.split("create function platform.list_credential_references", 1)[1].split(
+        "create or replace function platform.save_credential_reference", 1
+    )[0]
+    assert "secret_reference text" not in listing
+    assert "platform.user_has_system_permission('credentials.read')" in listing
+    assert "platform.user_has_permission" not in listing
+    assert "platform.user_has_workspace_membership" not in listing
+    assert "where credential.workspace_id = target_workspace" in listing
+    assert "raise exception using errcode = '42501'" in listing
     assert "secret_reference: SecretStr" in read(API)
     assert "get_secret_value()" in read(API)
-    assert "plaintext" in sql.lower()
-    assert "provider credentials" in sql.lower()
-    assert "grant select (id,workspace_id,name,provider_code,status" in sql.lower()
+    assert "revoke select on table platform.credential_references" in sql
+    assert "grant execute on function platform.list_credential_references(uuid)" in sql
+
+
+def test_credential_mutation_functions_are_system_only() -> None:
+    service, sql = read(SERVICE), read(CREDENTIALS_MIGRATION)
+    save = sql.split("create or replace function platform.save_credential_reference", 1)[1].split(
+        "create or replace function platform.delete_credential_reference", 1
+    )[0]
+    delete = sql.split("create or replace function platform.delete_credential_reference", 1)[1]
+    assert "platform.user_has_system_permission('credentials.manage')" in save
+    assert "platform.user_has_system_permission('credentials.manage')" in delete
+    assert "platform.user_has_permission" not in save + delete
+    assert "platform.user_has_workspace_membership" not in save + delete
+    assert "self._access.require_system(user_id, Permission.CREDENTIALS_MANAGE)" in service
+    assert "revoke all on function platform.save_credential_reference" in sql
+    assert "revoke all on function platform.delete_credential_reference" in sql
 
 
 def test_api_key_is_generated_once_hash_only_and_constant_time_verified() -> None:

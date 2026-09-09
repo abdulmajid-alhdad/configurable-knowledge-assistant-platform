@@ -202,14 +202,9 @@ class CommercialService:
         self._access.require_system(user_id, Permission.CREDENTIALS_READ)
         with self._tx(user_id, workspace_id) as session:
             rows = session.execute(text("""
-                select id,name,provider_code,status,created_at,updated_at,
-                       case
-                         when secret_reference like 'env:%' then 'env'
-                         when secret_reference like 'vault:%' then 'vault'
-                         else 'unknown'
-                       end reference_type
-                from platform.credential_references where workspace_id=:workspace
-                order by name
+                select id,workspace_id,name,provider_code,status,created_at,updated_at,
+                       reference_type
+                from platform.list_credential_references(:workspace)
             """), {"workspace": workspace_id}).mappings().all()
         return [dict(row) for row in rows]
 

@@ -129,14 +129,19 @@ def test_credentials_return_and_render_reference_metadata_only() -> None:
     persistence = read(
         "src/knowledge_platform/infrastructure/persistence/commercial.py"
     )
+    migration = read(
+        "supabase/migrations/20260910004757_system_credentials_control_plane.sql"
+    )
     pages = read("frontend/system/controls-pages.js")
     query = persistence.split("def credentials", 1)[1].split(
         "def save_credential_reference", 1
     )[0]
     assert "reference_type" in query
-    assert "case" in query
-    assert "select id,name,provider_code,status,created_at,updated_at" in query
-    assert "secret_reference," not in query
+    assert "platform.list_credential_references(:workspace)" in query
+    assert "platform.credential_references" not in query
+    assert "secret_reference" not in query
+    assert "when credential.secret_reference like 'env:%' then 'env'" in migration
+    assert "when credential.secret_reference like 'vault:%' then 'vault'" in migration
     assert "item.secret_reference" not in pages
     assert "raw API" not in pages
 
