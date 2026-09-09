@@ -79,29 +79,21 @@ def test_final_builtins_are_scoped_permission_sets_not_legacy_role_aliases() -> 
         BuiltInRole.WORKSPACE_MANAGER,
         BuiltInRole.MEMBER,
     }
-    assert Permission.WORKSPACE_MANAGE in BUILT_IN_ROLE_PERMISSIONS[
-        BuiltInRole.SYSTEM_ADMIN
-    ]
-    assert Permission.WORKSPACE_MANAGE not in BUILT_IN_ROLE_PERMISSIONS[
-        BuiltInRole.WORKSPACE_MANAGER
-    ]
-    assert Permission.ASSISTANT_CREATE not in BUILT_IN_ROLE_PERMISSIONS[
-        BuiltInRole.MEMBER
-    ]
+    assert Permission.WORKSPACE_MANAGE in BUILT_IN_ROLE_PERMISSIONS[BuiltInRole.SYSTEM_ADMIN]
+    assert (
+        Permission.WORKSPACE_MANAGE
+        not in BUILT_IN_ROLE_PERMISSIONS[BuiltInRole.WORKSPACE_MANAGER]
+    )
+    assert Permission.ASSISTANT_CREATE not in BUILT_IN_ROLE_PERMISSIONS[BuiltInRole.MEMBER]
 
 
 def test_migration_contains_security_invariants() -> None:
     sql = Path("supabase/migrations/20260904184807_stage7a_identity_access_control.sql").read_text()
     required = [
-        "force row level security",
-        "app.user_id",
-        "user_has_permission",
-        "final owner cannot be removed",
-        "final owner cannot be demoted",
-        "token_hash char(64)",
-        "security definer set search_path = ''",
-        "revoke all on function",
-        "accept_invitation",
+        "force row level security", "app.user_id", "user_has_permission",
+        "final owner cannot be removed", "final owner cannot be demoted",
+        "token_hash char(64)", "security definer set search_path = ''",
+        "revoke all on function", "accept_invitation",
     ]
     assert all(fragment in sql for fragment in required)
     assert "insert into platform.workspace_memberships" in sql
@@ -116,35 +108,34 @@ def test_migration_contains_security_invariants() -> None:
 
 
 def test_spa_uses_server_workspace_discovery_and_no_catalog_authority() -> None:
-    html = Path("src/knowledge_platform/delivery/saas_ui.py").read_text(encoding="utf-8")
-    assert "api('/api/me/workspaces')" in html
-    assert "last_selected_workspace_id" in html
-    assert "JSON.parse(localStorage.getItem('workspace_catalog')" not in html
-    assert "/app/members" in html and "/app/teams" in html and "/app/roles" in html
-    assert "location.reload" not in html
-    assert "renderInvitationAcceptance" in html
-    assert "new URLSearchParams(location.search).get('token')" in html
-    assert "localStorage.setItem('token'" not in html
+    app = Path("frontend/app/pages.js").read_text(encoding="utf-8")
+    routes = Path("frontend/app/routes.js").read_text(encoding="utf-8")
+    activation = Path("frontend/app/activation.js").read_text(encoding="utf-8")
+    assert 'getJSON("/api/me/workspaces")' in app
+    assert 'localStorage.getItem("selected_workspace_id")' in app
+    assert "workspace_catalog" not in app
+    assert "/app/members" in routes and "/app/conversations" in routes
+    assert "location.reload" not in app
+    assert "URLSearchParams(window.location.hash.slice(1))" in activation
+    assert 'localStorage.setItem("token"' not in activation
 
 
 def test_spa_recovers_from_membership_and_permission_changes() -> None:
-    html = Path("src/knowledge_platform/delivery/saas_ui.py").read_text(encoding="utf-8")
-    assert "async function reconcileAccess()" in html
-    assert "closeDialogs();if(current)" in html
-    assert "routePermission(route())" in html
-    assert "history.replaceState({},'', '/app')" in html
-    assert "applyNavigationPermissions();" in html
-    assert "textarea.readOnly=!editable" in html
-    assert "'تعديل البيانات':'assistant.update'" in html
+    app = Path("frontend/app/pages.js").read_text(encoding="utf-8")
+    session = Path("frontend/shared/session.js").read_text(encoding="utf-8")
+    assert "state.permissions" in app
+    assert "workspaceCache.invalidate" in app
+    assert 'host.addEventListener("refresh"' in app
+    assert "registerShell" in session
+    assert "clearInflight" in session
 
 
 def test_invitation_acceptance_keeps_token_ephemeral_and_sanitizes_url() -> None:
-    html = Path("src/knowledge_platform/delivery/saas_ui.py").read_text(encoding="utf-8")
-    assert "new URLSearchParams(location.search).get('token')" in html
-    assert "body:JSON.stringify({token})" in html
-    assert "history.replaceState({},'', '/app')" in html
-    assert "history.replaceState({},'', '/app/invitations/accept')" in html
-    assert "localStorage.setItem('invitation" not in html
+    activation = Path("frontend/app/activation.js").read_text(encoding="utf-8")
+    assert "URLSearchParams(window.location.hash.slice(1))" in activation
+    assert "JSON.stringify({ token })" in activation
+    assert 'window.history.replaceState(null, "", "/app/invitations/accept")' in activation
+    assert "localStorage" not in activation
 
 
 def test_session_refresh_is_attempted_at_most_once_per_request() -> None:

@@ -15,7 +15,10 @@ from knowledge_platform.infrastructure.persistence.repositories import (
     ConversationRepository,
     MessageRepository,
 )
-from knowledge_platform.modules.conversation.domain.conversation import Conversation
+from knowledge_platform.modules.conversation.domain.conversation import (
+    Conversation,
+    ConversationStatus,
+)
 from knowledge_platform.modules.conversation.domain.message import (
     MessageEvidence,
     MessageOutcome,
@@ -28,7 +31,7 @@ from knowledge_platform.modules.workspace_assistant.domain.identifiers import (
 )
 
 MIGRATION = Path(__file__).resolve().parents[2] / "supabase" / "migrations" / (
-    "20260902010000_conversation_outcome_evidence.sql"
+    "20260902213247_conversation_outcome_evidence.sql"
 )
 
 
@@ -124,6 +127,8 @@ def test_legacy_conversation_without_created_at_remains_readable() -> None:
         id=conversation.id.value,
         workspace_id=conversation.workspace_id.value,
         assistant_id=conversation.assistant_id.value,
+        title="legacy conversation",
+        status=ConversationStatus.ACTIVE.value,
         created_at=None,
     )
 
@@ -198,8 +203,8 @@ def test_conversation_list_delivery_returns_real_summary_and_filter() -> None:
     class Services:
         received: tuple[object, object] | None = None
 
-        def list_conversations(self, workspace_id, assistant_id=None):
-            self.received = (workspace_id, assistant_id)
+        def list_conversations(self, workspace_id, assistant_id=None, conversation_status=None):
+            self.received = (workspace_id, assistant_id, conversation_status)
             return [conversation]
 
     services = Services()
@@ -211,7 +216,7 @@ def test_conversation_list_delivery_returns_real_summary_and_filter() -> None:
     )
 
     result = endpoint(
-        conversation.workspace_id.value, conversation.assistant_id.value
+        conversation.workspace_id.value, conversation.assistant_id.value, ConversationStatus.ACTIVE
     )
 
     assert services.received == (

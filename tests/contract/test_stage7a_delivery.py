@@ -79,6 +79,10 @@ class FakeAccess:
         assert user == self.user.id
         return self._system_permissions
 
+    def require_system(self, user: UUID, permission: Permission) -> None:
+        assert user == self.user.id
+        assert permission.value in self._system_permissions
+
     def list_members(self, user: UUID, workspace: UUID) -> list[dict[str, object]]:
         return [{"user_id": user, "email": self.user.email, "role_name": "OWNER"}]
 
@@ -111,6 +115,7 @@ def app_client(
     app = FastAPI()
     app.include_router(create_auth_router(auth, access, secure=False))  # type: ignore[arg-type]
     app.include_router(create_access_router(access))  # type: ignore[arg-type]
+    app.include_router(create_access_router(access, system=True))  # type: ignore[arg-type]
     app.add_middleware(
         ControlPlaneSecurityMiddleware, auth=auth, access=access, cookie_secure=False
     )
@@ -191,6 +196,13 @@ def test_workspace_permission_middleware_and_access_routes() -> None:
     client, workspace = app_client()
     client.cookies.set("kp_access", "access")
     assert client.get(f"/api/workspaces/{workspace}/members").status_code == 200
-    assert client.get(f"/api/workspaces/{workspace}/teams").status_code == 200
-    assert client.get(f"/api/workspaces/{workspace}/roles").status_code == 200
-    assert client.get(f"/api/workspaces/{workspace}/invitations").status_code == 200
+    for resource in ("teams", "roles", "invitations"):
+        assert client.get(f"/api/workspaces/{workspace}/{resource}").status_code == 403
+
+    system_client, system_workspace = app_client(
+        system_permissions=frozenset({Permission.TEAMS_READ.value})
+    )
+    system_client.cookies.set("kp_access", "access")
+    assert system_client.get(
+        f"/api/system/workspaces/{system_workspace}/teams"
+    ).status_code == 200

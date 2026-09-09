@@ -15,7 +15,10 @@ from knowledge_platform.infrastructure.documents.parsers import (
 from knowledge_platform.infrastructure.documents.pipeline import chunk, normalize
 from knowledge_platform.infrastructure.vector_search.postgres import PgvectorDocumentSearchAdapter
 from knowledge_platform.infrastructure.vector_search.store import VectorChunk, VectorSearchStore
-from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
+from knowledge_platform.modules.document_knowledge.ports import (
+    EmbeddingVector,
+    GroundedModelAnswer,
+)
 from knowledge_platform.modules.evidence_grounding.domain.contracts import (
     GroundedAnswer,
     InsufficientEvidence,
@@ -40,9 +43,9 @@ class FakeEmbeddings:
 class FakeModel:
     calls = 0
 
-    def generate(self, *, question: str, context: str) -> str:
+    def generate(self, *, question: str, context: str) -> GroundedModelAnswer:
         self.calls += 1
-        return "Grounded response"
+        return GroundedModelAnswer("Grounded response", ("E1",))
 
 
 def test_txt_json_normalization_chunking_and_provenance() -> None:

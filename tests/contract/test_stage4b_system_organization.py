@@ -53,7 +53,7 @@ def test_stage4b_surfaces_have_real_operations_without_forbidden_product_actions
         "bindingManager",
         "createSourceForm",
         "sourceBindings",
-        "invitationForm",
+        "provisioningForm",
         "memberRoleForm",
         "teamForm",
         "teamMembers",
@@ -106,7 +106,8 @@ def test_system_organization_routes_are_registered_with_canonical_methods() -> N
         '@router.get("/roles")',
         '@router.get("/permissions")',
         '@router.get("/workspaces/{workspace_id}/members")',
-        '@router.post("/workspaces/{workspace_id}/invitations"',
+        '@router.get("/workspaces/{workspace_id}/invitations")',
+        '@router.delete("/workspaces/{workspace_id}/invitations/{invitation_id}"',
         '@router.post("/workspaces/{workspace_id}/teams"',
         '@router.post("/workspaces/{workspace_id}/roles"',
     )

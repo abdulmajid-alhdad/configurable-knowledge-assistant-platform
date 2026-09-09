@@ -7,7 +7,10 @@ from knowledge_platform.application.document_ingestion import DocumentIngestionS
 from knowledge_platform.application.document_rag import DocumentRagService
 from knowledge_platform.infrastructure.documents.parsers import MarkdownDocumentParser
 from knowledge_platform.infrastructure.vector_search.store import VectorSearchStore
-from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
+from knowledge_platform.modules.document_knowledge.ports import (
+    EmbeddingVector,
+    GroundedModelAnswer,
+)
 from knowledge_platform.modules.evidence_grounding.domain.contracts import PolicyDenied
 from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
 from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
@@ -27,7 +30,7 @@ def test_query_embedding_is_not_called_when_private_egress_is_denied() -> None:
             return EmbeddingVector((1.0,))
 
     class Model:
-        def generate(self, *, question: str, context: str) -> str:
+        def generate(self, *, question: str, context: str) -> GroundedModelAnswer:
             raise AssertionError("model must not run after egress denial")
 
     result = DocumentRagService(
@@ -48,6 +51,7 @@ def test_ingestion_denial_prevents_embedding_and_ready_transition() -> None:
     )
     source_repository = Mock()
     representation_repository = Mock()
+    representation_repository.next_version.return_value = 1
     embeddings = Mock()
     service = DocumentIngestionService(
         embeddings=embeddings, egress=DataEgressPolicy()
@@ -77,6 +81,7 @@ def test_ingestion_embedding_is_allowed_by_explicit_external_policy() -> None:
     )
     source_repository = Mock()
     representation_repository = Mock()
+    representation_repository.next_version.return_value = 1
     embeddings = Mock()
     embeddings.embed_documents.return_value = (EmbeddingVector((1.0,)),)
     ready = DocumentIngestionService(

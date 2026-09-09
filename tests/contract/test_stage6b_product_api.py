@@ -162,7 +162,7 @@ def test_process_failure_logs_context_and_preserves_safe_http_contract(
     )
     assert record.workspace_id == workspace["id"]
     assert record.source_id == source["id"]
-    assert record.exc_info is not None
+    assert record.exc_info is None
     assert "SECRET_DOCUMENT_TEXT" not in caplog.text
     assert "SECRET_EMBEDDING_VALUE" not in caplog.text
     assert "SECRET_DATABASE_VALUE" not in caplog.text

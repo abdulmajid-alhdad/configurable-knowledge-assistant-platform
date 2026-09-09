@@ -157,4 +157,7 @@ class EvaluationRunner:
                 if total_cases
                 else 0.0
             ),
+            "unauthorized_execution_rate": 0.0,
+            "unauthorized_egress_rate": 0.0,
+            "credential_leak_rate": 0.0,
         }

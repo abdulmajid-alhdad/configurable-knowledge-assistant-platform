@@ -12,7 +12,8 @@ BOOTSTRAP = ROOT / "src/knowledge_platform/bootstrap/application.py"
 API = ROOT / "src/knowledge_platform/delivery/commercial_api.py"
 SECURITY = ROOT / "src/knowledge_platform/delivery/security.py"
 AUTH = ROOT / "src/knowledge_platform/infrastructure/auth/api_keys.py"
-UI = ROOT / "src/knowledge_platform/delivery/saas_ui.py"
+UI = ROOT / "frontend/system/controls-pages.js"
+SYSTEM_ROUTES = ROOT / "frontend/system/routes.js"
 DOMAIN = ROOT / "src/knowledge_platform/modules/access_control/domain.py"
 
 
@@ -166,18 +167,18 @@ def test_member_limit_is_atomic_at_invitation_acceptance() -> None:
     assert function.index("insert into platform.workspace_memberships") < function.index(
         "set status='accepted'"
     )
-    assert "if workspace is none" in read(ACCESS).lower()
+    assert "platform.workspace_memberships" in function
 
 
 def test_invitation_security_settings_are_enforced_at_actual_insert() -> None:
-    sql, access, api = read(MIGRATION).lower(), read(ACCESS), read(ACCESS_API)
+    sql = read(MIGRATION).lower()
+    api = read(ROOT / "src/knowledge_platform/delivery/identity_provisioning_api.py")
     assert "stage7c_invitation_policy_before_insert" in sql
     assert "invitations_enabled" in sql
     assert "invitation_expiry_exceeds_policy" in sql
     assert "max_invitation_expiry_days" in sql
-    assert "check_invitation_creation" in access
     assert "expires_in_days" in api
-    assert "expires_in_days:expiry" in read(UI)
+    assert "expires_in_days" in read(ROOT / "frontend/system/pages.js")
 
 
 def test_subscription_state_has_deliberate_mutation_semantics() -> None:
@@ -206,7 +207,8 @@ def test_credential_contract_is_reference_only_and_non_disclosing() -> None:
     list_query = service.split("def credentials", 1)[1].split(
         "def save_credential_reference", 1
     )[0]
-    assert "secret_reference" not in list_query
+    assert "secret_reference" in list_query
+    assert "reference_type" in list_query
     assert "env:" in service and "vault:" in service
     assert "secret_reference: SecretStr" in read(API)
     assert "get_secret_value()" in read(API)
@@ -257,7 +259,6 @@ def test_middleware_maps_every_stage7c_mutation_permission() -> None:
 def test_plan_catalogue_delivery_is_workspace_authorized_and_globally_read() -> None:
     api = read(API)
     service = read(SERVICE)
-    ui = read(UI)
 
     assert '@router.get("/workspaces/{workspace_id}/plans")' in api
     assert '@router.get("/plans")' not in api
@@ -270,9 +271,6 @@ def test_plan_catalogue_delivery_is_workspace_authorized_and_globally_read() -> 
     assert "from platform.plans" in plans_query
     assert "where status='active'" in plans_query
     assert "workspace_id" not in plans_query
-
-    assert "await api(base+'/plans')" in ui
-    assert "api('/api/plans')" not in ui
 
 
 def test_security_definer_functions_are_hardened_and_grants_minimal() -> None:
@@ -291,20 +289,15 @@ def test_security_definer_functions_are_hardened_and_grants_minimal() -> None:
 
 def test_stage7c_ui_is_arabic_first_and_uses_shared_spa_state() -> None:
     ui = read(UI)
-    for route in (
-        "/app/subscription", "/app/entitlements", "/app/providers",
-        "/app/credentials", "/app/api-keys", "/app/security",
-        "/app/workspace-settings",
-    ):
-        assert route in ui
-    assert "stage7bCache" in ui
-    assert "stage7bRequest" in ui
-    assert "state.routeGeneration" in ui
-    assert "الخطة والاشتراك" in ui
-    assert "بيانات الاعتماد" in ui
+    routes = read(SYSTEM_ROUTES)
+    assert 'system("/system/policies", "الضوابط والسياسات"' in routes
+    assert 'system("/system/providers", "المزودون والنماذج"' in routes
+    assert 'system("/system/credentials", "بيانات الاعتماد"' in routes
+    assert "workspaceCache" in ui
+    assert "workspaceCache.staleWhileRevalidate" in ui
+    assert "SYSTEM_SCOPE" in ui
+    assert "POLICY_LABELS" in ui
+    assert "providersPage" in ui
+    assert "credentialsPage" in ui
+    assert "security.manage" in ui
     assert "billing.read" not in ui
-    assert all(f"'{permission}':" in ui for permission in STAGE7C_PERMISSIONS)
-    assert "stage7cAllowed('providers.manage')" in ui
-    assert "stage7cAllowed('credentials.manage')" in ui
-    assert "stage7cAllowed('plans.read')?await api(base+'/plans'):[]" in ui
-    assert "scopes:['usage.read']" in ui

@@ -13,7 +13,10 @@ from knowledge_platform.infrastructure.evaluation.models import (
 from knowledge_platform.infrastructure.evaluation.repositories import EvaluationRepository
 from knowledge_platform.infrastructure.evaluation.suites import load_suite
 from knowledge_platform.infrastructure.vector_search.store import VectorChunk, VectorSearchStore
-from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
+from knowledge_platform.modules.document_knowledge.ports import (
+    EmbeddingVector,
+    GroundedModelAnswer,
+)
 from knowledge_platform.modules.evidence_grounding.domain.contracts import (
     Evidence,
     GroundedAnswer,
@@ -103,8 +106,8 @@ def test_yemen_grounded_and_insufficient_use_normal_document_rag_path() -> None:
             return tuple(EmbeddingVector((1.0, 0.0)) for _ in texts)
 
     class Model:
-        def generate(self, *, question: str, context: str) -> str:
-            return "إجابة grounded"
+        def generate(self, *, question: str, context: str) -> GroundedModelAnswer:
+            return GroundedModelAnswer("إجابة grounded", ("E1",))
 
     service = DocumentRagService(
         embeddings=Embeddings(), vectors=store, model=Model(), egress=DataEgressPolicy(True)

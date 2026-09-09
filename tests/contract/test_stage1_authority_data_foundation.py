@@ -489,11 +489,12 @@ def test_membership_team_and_invitation_mutations_are_system_authorized() -> Non
         "save_team",
         "delete_team",
         "set_team_member",
-        "create_invitation",
         "revoke_invitation",
     ):
         body = access.split(f"def {method}", 1)[1].split("\n    def ", 1)[0]
         assert "require_system" in body
+    identity = source(Path("src/knowledge_platform/application/identity_provisioning.py"))
+    assert "require_system(actor, Permission.INVITATIONS_MANAGE)" in identity
     sql = source(MIGRATION)
     assert "user_has_system_permission('members.manage')" in sql
     assert "user_has_system_permission('invitations.manage')" in sql

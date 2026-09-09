@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -61,8 +62,10 @@ def test_frontend_footer_revision_reloads_the_authenticated_module_graph() -> No
     surface = read("frontend/shared/surface.js")
     shell = read("frontend/shared/shell.js")
 
-    revision = "stage4-auth-footer-2"
-    assert revision in index
-    assert revision in bootstrap
-    assert f"shell.js?v={revision}" in surface
-    assert f"session.js?v={revision}" in shell
+    match = re.search(r'ASSET_VERSION\s*=\s*"([^"]+)"', bootstrap)
+    assert match is not None
+    revision = match.group(1)
+    assert f"?v={revision}" in index
+    assert "import(asset(`/assets/${surface}/entry.js`))" in bootstrap
+    assert re.search(r'from "/assets/shared/shell\.js\?v=[^"]+"', surface)
+    assert re.search(r'from "/assets/shared/session\.js\?v=[^"]+"', shell)

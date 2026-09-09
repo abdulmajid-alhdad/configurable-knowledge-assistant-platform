@@ -9,11 +9,13 @@ from knowledge_platform.infrastructure.evaluation.suites import load_suite
 
 
 def test_product_page_mentions_operational_evaluation_surface() -> None:
-    page = next(r.endpoint() for r in create_app().routes if getattr(r, "path", None) == "/app")
-    assert "التقييم والتشغيل" in page
-    assert "/health" in page
-    assert "/ready" in page
-    assert "/api/evaluation/suites" in page
+    index = Path("frontend/index.html").read_text(encoding="utf-8")
+    routes = Path("frontend/app/routes.js").read_text(encoding="utf-8")
+    app = Path("frontend/app/pages.js").read_text(encoding="utf-8")
+    assert 'lang="ar" dir="rtl"' in index
+    assert "/app/evaluation" in routes
+    assert "/api/evaluation/suites" in app
+    assert {route.path for route in create_app().routes} >= {"/health", "/ready", "/app"}
 
 
 def test_health_is_liveness_without_runtime() -> None:
@@ -47,13 +49,10 @@ def test_suite_catalog_lists_trusted_artifacts_with_canonical_hashes() -> None:
         assert summary.sha256 == artifact.sha256
 
 
-def test_product_surface_does_not_claim_unsupported_run_execution_or_history() -> None:
-    page = next(
-        r.endpoint() for r in create_app().routes if getattr(r, "path", None) == "/app"
-    )
-    assert "/api/evaluation/suites" in page
-    assert "/evaluation/runs" not in page
-    assert "تشغيل التقييم" not in page
+def test_product_surface_exposes_supported_runs_without_unsupported_metrics() -> None:
+    page = Path("frontend/app/pages.js").read_text(encoding="utf-8")
+    assert "/api/workspaces/${state.workspaceId}/evaluation/runs" in page
+    assert "تشغيل التقييم" in page
     assert "JSON.stringify(o)" not in page
     assert "accuracy" not in page.lower()
     assert "faithfulness" not in page.lower()

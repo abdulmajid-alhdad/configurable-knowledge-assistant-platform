@@ -45,7 +45,7 @@ def test_ask_failure_preserves_http_contract_and_sanitizes_logs(
     assert record.workspace_id == str(workspace_id)
     assert record.conversation_id == str(conversation_id)
     assert record.exception_type == "RuntimeError"
-    assert record.exc_info is not None
+    assert record.exc_info is None
     for secret in (
         "SECRET_QUESTION",
         "SECRET_RETRIEVED_CHUNK",

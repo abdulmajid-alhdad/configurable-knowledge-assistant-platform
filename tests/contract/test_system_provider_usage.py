@@ -115,13 +115,13 @@ def test_usage_ui_has_precise_spend_and_optional_limit_semantics() -> None:
 
     assert 'getJSON("/api/system/usage/provider")' in usage
     assert "الإنفاق الإجمالي للمفتاح" in usage
-    assert "إنفاق مفتاح OpenRouter" in usage
+    assert "إنفاق بالدولار الأمريكي كما يعيده OpenRouter" in usage
     assert "maximumFractionDigits: 20" in pages
     assert "US$" in pages
     assert 'style: "currency"' not in pages
     assert "typeof data.limit === \"number\"" in usage
     assert "typeof data.limit_remaining === \"number\"" in usage
-    assert "limitFacts.length ? panel" in usage
+    assert "if (limitFacts.length)" in usage
     assert "وتيرة إعادة ضبط الحد" in usage
     assert "formatDate(data.limit_reset)" not in usage
     assert "المفتاح ضمن الفئة المجانية" in usage

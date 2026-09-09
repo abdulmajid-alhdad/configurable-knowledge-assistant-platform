@@ -1,7 +1,11 @@
 """Configurability contracts for the Yemen reference package."""
 from knowledge_platform.application.document_rag import DocumentRagService
 from knowledge_platform.infrastructure.vector_search.store import VectorChunk, VectorSearchStore
-from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
+from knowledge_platform.modules.document_knowledge.ports import (
+    EmbeddingVector,
+    GroundedModelAnswer,
+    ModelInsufficientEvidence,
+)
 from knowledge_platform.modules.evidence_grounding.domain.contracts import (
     GroundedAnswer,
     InsufficientEvidence,
@@ -117,9 +121,9 @@ def test_yemen_reference_supported_question_returns_grounded_answer() -> None:
             return tuple(EmbeddingVector((1.0, 0.0)) for _ in texts)
 
     class Model:
-        def generate(self, *, question: str, context: str) -> str:
+        def generate(self, *, question: str, context: str) -> GroundedModelAnswer:
             assert content in context
-            return "grounded"
+            return GroundedModelAnswer("grounded", ("E1",))
 
     outcome = DocumentRagService(
         embeddings=Embeddings(), vectors=store, model=Model(), egress=DataEgressPolicy(True)
@@ -141,7 +145,7 @@ def test_yemen_reference_unsupported_and_detached_questions_are_insufficient() -
             return ()
 
     class Model:
-        def generate(self, *, question: str, context: str) -> str:
+        def generate(self, *, question: str, context: str) -> ModelInsufficientEvidence:
             raise AssertionError("model must not run without evidence")
 
     rag = DocumentRagService(

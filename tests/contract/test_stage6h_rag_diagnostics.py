@@ -7,7 +7,10 @@ from knowledge_platform.application.document_rag import (
     DocumentRagService,
     _log_rag_failure,
 )
-from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
+from knowledge_platform.modules.document_knowledge.ports import (
+    EmbeddingVector,
+    GroundedModelAnswer,
+)
 from knowledge_platform.modules.evidence_grounding.domain.contracts import (
     GroundedAnswer,
     InsufficientEvidence,
@@ -44,7 +47,7 @@ class _Vectors:
 
 
 class _Model:
-    def generate(self, *, question: str, context: str) -> str:
+    def generate(self, *, question: str, context: str) -> GroundedModelAnswer:
         raise AssertionError("model must not run after retrieval failure")
 
 
@@ -55,7 +58,7 @@ class _Chunk:
 
 
 class _FailingModel:
-    def generate(self, *, question: str, context: str) -> str:
+    def generate(self, *, question: str, context: str) -> GroundedModelAnswer:
         raise RuntimeError("SECRET_PROMPT SECRET_MODEL_RESPONSE SECRET_TOKEN")
 
 
@@ -82,9 +85,9 @@ def test_evidence_mapping_preserves_source_and_provenance_and_reaches_model() ->
             return (_ChunkWithSource(source_id),)
 
     class Model:
-        def generate(self, *, question: str, context: str) -> str:
+        def generate(self, *, question: str, context: str) -> GroundedModelAnswer:
             calls.append(context)
-            return "safe answer"
+            return GroundedModelAnswer("safe answer", ("E1",))
 
     result = DocumentRagService(
         embeddings=_Embeddings(), vectors=Vectors(), model=Model(), egress=DataEgressPolicy(True)
@@ -127,10 +130,10 @@ def test_retrieved_content_distance_filters_weak_evidence_without_model_call() -
             )
 
     class Model:
-        def generate(self, *, question: str, context: str) -> str:
+        def generate(self, *, question: str, context: str) -> GroundedModelAnswer:
             nonlocal calls
             calls += 1
-            return "must not run"
+            return GroundedModelAnswer("must not run", ("E1",))
 
     result = DocumentRagService(
         embeddings=_Embeddings(),
@@ -165,7 +168,7 @@ def test_evidence_mapping_failure_is_safe_and_does_not_call_model(
             return (BrokenChunk(),)
 
     class Model:
-        def generate(self, *, question: str, context: str) -> str:
+        def generate(self, *, question: str, context: str) -> GroundedModelAnswer:
             raise AssertionError("model must not run after evidence mapping failure")
 
     with caplog.at_level("ERROR", logger="knowledge_platform.application.document_rag"):
@@ -280,7 +283,7 @@ def test_model_failure_logs_model_stage_without_private_text(
             egress=DataEgressPolicy(True),
         ).ask(
             workspace_id=WorkspaceId.new(), assistant_id=AssistantId.new(),
-            question="question", source_ids=frozenset({KnowledgeSourceId.new()}),
+            question="question", source_ids=frozenset({_Chunk.source_id}),
         )
     assert isinstance(result, TechnicalFailure)
     assert result.reason == "document RAG failed"

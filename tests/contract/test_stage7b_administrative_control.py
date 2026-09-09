@@ -8,10 +8,13 @@ from knowledge_platform.modules.access_control.domain import (
 
 ROOT = Path(__file__).parents[2]
 MIGRATION = ROOT / "supabase/migrations/20260904225858_stage7b_administrative_control.sql"
-UI = ROOT / "src/knowledge_platform/delivery/saas_ui.py"
 SECURITY = ROOT / "src/knowledge_platform/delivery/security.py"
 API = ROOT / "src/knowledge_platform/delivery/administration_api.py"
 SERVICE = ROOT / "src/knowledge_platform/infrastructure/persistence/administration.py"
+SYSTEM_PAGES = ROOT / "frontend/system/pages.js"
+CONTROL_PAGES = ROOT / "frontend/system/controls-pages.js"
+ROUTES = ROOT / "frontend/system/routes.js"
+DOM = ROOT / "frontend/shared/dom.js"
 
 
 def text(path: Path) -> str:
@@ -61,7 +64,7 @@ def test_append_paths_are_security_definer_and_not_public() -> None:
 def test_governance_is_persisted_and_enforced_by_product_delivery() -> None:
     migration = text(MIGRATION)
     stage1 = text(ROOT / "supabase/migrations/20260906070000_stage1_authority_data_foundation.sql")
-    delivery = (ROOT / "src/knowledge_platform/delivery/product_api.py").read_text(encoding="utf-8")
+    delivery = text(ROOT / "src/knowledge_platform/delivery/product_api.py")
     assert "assistant_creation_enabled" in migration
     assert "set is_active=false where setting_key='assistant_creation_enabled'" in stage1
     assert "assistant_creation_enabled" not in delivery
@@ -87,44 +90,38 @@ def test_stage7b_api_is_paginated_and_permission_mapped() -> None:
 
 def test_audit_metadata_does_not_accept_sensitive_product_payloads() -> None:
     service = text(SERVICE)
-    forbidden = ("password", "access_token", "refresh_token", "embedding", "raw_prompt")
-    assert all(item not in service for item in forbidden)
+    assert "_SENSITIVE_METADATA_TERMS" in service
+    assert all(item in service for item in ("password", "secret", "token", "api_key"))
+    assert "_safe_audit_metadata" in service
     assert "metadata or {}" in service
 
 
 def test_spa_has_deep_routes_and_local_renderers() -> None:
-    ui = text(UI)
+    pages, controls, routes = text(SYSTEM_PAGES), text(CONTROL_PAGES), text(ROUTES)
     for route in (
-        "/app/usage",
-        "/app/governance",
-        "/app/audit",
-        "/app/notifications",
-        "/app/admin-operations",
+        "/system/policies",
+        "/system/usage",
+        "/system/providers",
+        "/system/credentials",
+        "/system/conversations",
+        "/system/audit",
+        "/system/access",
     ):
-        assert f'data-route="{route}"' in ui
-        assert f"p==='{route}'" in ui
-    assert "history.pushState" in ui
-    assert "popstate" in ui
-    assert "location.reload" not in ui
-    assert "renderNotificationsStage7b" in ui
-    assert "notifications/'+item.id+'/read" in ui
-    assert "a[data-route]" in ui
-    assert "stage7bCache" in ui
-    assert "stage7bInflight" in ui
-    assert "stage7bPrefetch" in ui
-    assert "stage7bMetrics.coalesced" in ui
-    assert "stage7bMetrics.cacheHits" in ui
-    assert "stage7bMetrics.swrRefreshes" in ui
-    assert "stage7bMetrics.prefetches" in ui
+        assert route in routes
+    assert "export function policiesPage" in controls
+    assert "export function usagePage" in controls
+    assert "export function systemConversationsPage" in controls
+    assert "history.pushState" not in controls
+    assert "innerHTML" not in pages + controls
 
 
-def test_notification_optimistic_contract_and_rollback() -> None:
-    ui = text(UI)
-    assert "data.unread_count=0" in ui
-    assert "data.unread_count=Math.max(0" in ui
-    assert "const snapshot={unread_count:data.unread_count" in ui
-    assert "toast('تعذر تحديث حالة الإشعارات.')" in ui
-    assert "toast('تعذر تعليم الإشعار كمقروء.')" in ui
+def test_notification_contract_remains_backend_owned_and_scoped() -> None:
+    api, service = text(API), text(SERVICE)
+    assert '@router.get("/notifications")' in api
+    assert '@router.patch("/notifications/read", status_code=204)' in api
+    assert '@router.patch("/notifications/{notification_id}/read", status_code=204)' in api
+    assert "recipient_user_id" in service
+    assert "coalesce(read_at,now())" in service
 
 
 def test_notifications_are_recipient_scoped_and_have_read_state() -> None:
@@ -141,93 +138,64 @@ def test_history_filters_cast_nullable_parameters() -> None:
 
 
 def test_stage7a_admin_routes_extend_shared_cache_and_prefetch() -> None:
-    ui = text(UI)
+    pages, controls = text(SYSTEM_PAGES), text(CONTROL_PAGES)
     for key in ("members", "invitations", "teams", "roles", "permissions"):
-        assert f"stage7aAccessKey('{key}')" in ui
-    assert "renderAccessPage=renderAccessPageCached" in ui
-    assert "const stage7bPrefetchWithAccess=stage7bPrefetch" in ui
-    assert "members.read" in ui and "teams.read" in ui and "roles.read" in ui
-    assert "invitations.read" in ui
+        assert key in pages
+    assert "workspaceCache" in pages and "workspaceCache" in controls
+    assert "loadResource" in pages
+    assert "staleWhileRevalidate" in pages + controls
 
 
 def test_stage7a_admin_cache_invalidation_and_stale_guard() -> None:
-    ui = text(UI)
-    assert "stage7bRequest(key" in ui
-    assert "stage7bVisible(generation,workspace)" in ui
-    assert "stage7bCache.delete(stage7aAccessKey('members'))" in ui
-    assert "stage7bCache.delete(stage7aAccessKey('teams'))" in ui
-    assert "stage7bCache.delete(stage7aAccessKey('roles'))" in ui
-    assert "stage7bCache.delete(stage7aAccessKey('invitations'))" in ui
-    assert "stage7bCache.clear();stage7bInflight.clear();stage7bClearClientState" in ui
+    pages, controls = text(SYSTEM_PAGES), text(CONTROL_PAGES)
+    assert "workspaceCache.invalidate" in pages + controls
+    assert "clear() {" in text(ROOT / "frontend/shared/cache.js")
+    assert "isCurrent" in pages + controls
 
 
 def test_stage7a_routes_keep_route_host_during_cached_navigation() -> None:
-    ui = text(UI)
-    assert "if(cached){stage7aRenderAccess" in ui
-    assert (
-        "else root.replaceChildren(pageToolbar('إدارة الوصول إلى مساحة العمل.'),localLoading" in ui
-    )
-    assert "window.location" not in ui
+    pages, controls = text(SYSTEM_PAGES), text(CONTROL_PAGES)
+    assert "host.replaceChildren" in pages + controls
+    assert "route-panel" in pages + controls
+    assert "window.location.replace" not in pages + controls
 
 
 def test_administrative_dom_render_contract_and_arabic_permissions() -> None:
-    ui = text(UI)
-    assert "HTMLTableCellElement" in ui
-    assert "el('td','',buttons)" not in ui
-    assert "stage7aPermissionLabels" in ui
-    permissions = (
-        "workspace.read workspace.manage assistant.read assistant.create assistant.update "
-        "knowledge.read knowledge.create knowledge.process knowledge.attach conversation.read "
-        "conversation.ask evaluation.read operations.read settings.read "
-        "members.read members.manage "
-        "teams.read teams.manage roles.read roles.manage "
-        "invitations.read invitations.manage usage.read "
-        "governance.read governance.manage audit.read "
-        "notifications.read notifications.manage"
-    ).split()
-    assert len(permissions) == 28
-    assert all(f"'{code}':" in ui for code in permissions)
-    assert "صلاحية غير معروفة" in ui
-    assert "دور أساسي — غير قابل للتعديل" in ui
+    pages = text(SYSTEM_PAGES)
+    assert 'el("td"' in pages
+    assert "function permissionLabel" in pages
+    assert "innerHTML" not in pages
+    assert "technicalCode" in pages
 
 
 def test_admin_actions_are_nodes_and_cache_is_data_only() -> None:
-    ui = text(UI)
-    assert "actionCell=el('td')" in ui
-    assert "cell.append(value)" in ui
-    assert "stage7aRenderAccess" in ui
-    assert "stage7bCache.set(key,items)" in ui
-    assert "stage7bCache.set(key,root" not in ui
-    assert "[object HTMLDivElement]" not in ui
-    assert "[object HTMLElement]" not in ui
-    assert "[object Object]" not in ui
+    pages, controls = text(SYSTEM_PAGES), text(CONTROL_PAGES)
+    assert "function action" in pages + controls
+    assert ".append(" in pages + controls
+    assert "workspaceCache.set" in controls
+    assert "[object HTMLDivElement]" not in pages + controls
+    assert "[object Object]" not in pages + controls
 
 
 def test_admin_cell_contract_supports_nested_node_arrays_and_invitation_states() -> None:
-    ui = text(UI)
-    assert "function appendCellContent(cell,value)" in ui
-    assert "if(Array.isArray(value))" in ui
-    assert "value.forEach(item=>appendCellContent(cell,item))" in ui
-    assert "stage7aRoleLabels" in ui
-    assert "OWNER:'المالك'" in ui
-    assert "ADMIN:'المدير'" in ui
-    assert "MEMBER:'العضو'" in ui
-    assert "VIEWER:'المشاهد'" in ui
-    for status, label in (
-        ("pending", "معلقة"),
-        ("accepted", "مقبولة"),
-        ("revoked", "ملغاة"),
-        ("expired", "منتهية"),
-    ):
-        assert f"{status}:'{label}'" in ui
-    assert "inv.status==='pending'&&allowed('invitations.manage')" in ui
-    assert "stage7aInvitationDisplay" in ui
+    dom, pages = text(DOM), text(SYSTEM_PAGES)
+    assert "export function appendContent(parent, value)" in dom
+    assert "if (Array.isArray(value))" in dom
+    assert "value.forEach((item) => appendContent(parent, item));" in dom
+    assert "value instanceof Node" in dom
+    assert "parent.append(value);" in dom
+    assert 'throw new TypeError("Unsupported DOM content")' in dom
+    assert 'from "/assets/shared/dom.js"' in pages
+    assert "function table" in pages
+    assert 'el("td", {}, cell)' in pages
+    assert "statusBadge(invitation.status)" in pages
+    assert 'can("invitations.manage") && invitation.status === "pending"' in pages
+    assert 'action("إلغاء الدعوة"' in pages
 
 
 def test_roles_permission_producer_passes_nodes_not_stringified_arrays() -> None:
-    ui = text(UI)
-    assert "const stage7aAccessRowsBase=stage7aAccessRows" in ui
-    assert "permissionCell.append(...permissions)" in ui
-    assert "permissionCell.append(...permissions)" in ui
-    assert "permissionNodes.join" not in ui
-    assert "String(permission" not in ui
+    pages = text(SYSTEM_PAGES)
+    assert "function permissionSelection" in pages
+    assert "permissions.values()" in pages
+    assert "permissionNodes.join" not in pages
+    assert "String(permission" not in pages

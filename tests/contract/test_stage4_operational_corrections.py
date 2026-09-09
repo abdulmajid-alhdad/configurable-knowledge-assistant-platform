@@ -53,7 +53,8 @@ def test_knowledge_corrections_preserve_artifact_and_reprocess_contracts() -> No
 
     assert "/sources/${source.id}/artifact" in pages
     assert "artifact.artifact_present" in pages
-    assert "لا يمكن استبداله من هذه الواجهة" in pages
+    assert "artifact.original_filename" in pages
+    assert "artifact.upload_allowed" in pages
     assert 'reprocess = String(source.lifecycle || "").toUpperCase() === "READY"' in pages
     assert 'reprocess ? "إعادة معالجة المصدر" : "معالجة المصدر"' in pages
     assert "reindex=True" in processing
@@ -154,7 +155,8 @@ def test_teams_are_workspace_bound_and_return_real_members() -> None:
     )[0]
     assert '"form-context"' in team_section
     assert "team.member_ids" in team_section
-    assert "data.members.find" in team_section
+    assert "members.filter" in pages
+    assert "team.member_ids" in team_section
 
 
 def test_current_identity_and_rbac_schema_cannot_safely_satisfy_deferred_extensions() -> None:

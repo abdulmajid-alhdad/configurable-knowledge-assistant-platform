@@ -144,7 +144,7 @@ def test_activation_frontend_is_shell_free_non_consuming_and_never_logs_token_in
     activation = read("frontend/app/activation.js")
 
     assert 'window.location.pathname === "/app/invitations/accept"' in bootstrap
-    assert 'import("/assets/app/activation.js")' in bootstrap
+    assert "import(asset(\"/assets/app/activation.js\"))" in bootstrap
     assert "startSurface" not in activation
     assert "new URLSearchParams(window.location.hash.slice(1))" in activation
     assert 'window.history.replaceState(null, "", "/app/invitations/accept")' in activation
