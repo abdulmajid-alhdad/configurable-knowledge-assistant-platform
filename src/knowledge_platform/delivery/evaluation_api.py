@@ -170,37 +170,32 @@ def _run_detail(value: EvaluationRunDetail) -> EvaluationRunDetailResponse:
     for item in value.results:
         diagnostic = item.diagnostic
         evidence_count = diagnostic.get("evidence_count", 0)
+        input_value = diagnostic.get("input")
+        expected_outcome = diagnostic.get("expected_outcome")
+        reference_answer = diagnostic.get("reference_answer")
+        actual = diagnostic.get("actual")
+        failure_category = diagnostic.get("failure_category")
         results.append(
             EvaluationCaseResultResponse(
                 case_key=item.case_key,
                 outcome_type=item.outcome_type,
                 passed=item.passed,
-                input=diagnostic.get("input") if isinstance(diagnostic.get("input"), str) else None,
+                input=input_value if isinstance(input_value, str) else None,
                 expected_outcome=(
-                    diagnostic.get("expected_outcome")
-                    if isinstance(diagnostic.get("expected_outcome"), str)
-                    else None
+                    expected_outcome if isinstance(expected_outcome, str) else None
                 ),
                 expected_source_ids=_uuid_list(diagnostic.get("expected_source_ids")),
                 reference_answer=(
-                    diagnostic.get("reference_answer")
-                    if isinstance(diagnostic.get("reference_answer"), str)
-                    else None
+                    reference_answer if isinstance(reference_answer, str) else None
                 ),
-                actual=(
-                    diagnostic.get("actual")
-                    if isinstance(diagnostic.get("actual"), str)
-                    else None
-                ),
+                actual=actual if isinstance(actual, str) else None,
                 actual_source_ids=_uuid_list(diagnostic.get("actual_source_ids")),
                 evidence_count=(
                     int(evidence_count) if isinstance(evidence_count, (int, float)) else 0
                 ),
                 provenance_present=bool(diagnostic.get("provenance_present", False)),
                 failure_category=(
-                    diagnostic.get("failure_category")
-                    if isinstance(diagnostic.get("failure_category"), str)
-                    else None
+                    failure_category if isinstance(failure_category, str) else None
                 ),
             )
         )

@@ -1,6 +1,6 @@
 """Delivery boundary for the distinct SYSTEM Conversation aggregate."""
 
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
@@ -60,7 +60,7 @@ def create_system_conversation_router(
     router = APIRouter(prefix="/api/system/conversations")
 
     def actor(request: Request) -> UUID:
-        return request.state.user.id
+        return cast(UUID, request.state.user.id)
 
     @router.get("")
     def conversations(

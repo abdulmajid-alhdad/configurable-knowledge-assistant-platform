@@ -1,6 +1,6 @@
 """Authenticated Stage 7A workspace access-administration API."""
 
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
@@ -68,7 +68,7 @@ def create_access_router(access: AccessControlPort, *, system: bool = False) -> 
     router = APIRouter(prefix="/api/system" if system else "/api")
 
     def user(request: Request) -> UUID:
-        return request.state.user.id
+        return cast(UUID, request.state.user.id)
 
     if system:
 

@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp
 
 from knowledge_platform.application.access_control import (
     AccessControlPort,
@@ -316,11 +317,24 @@ def _workspace_system_surface(path: str) -> bool:
 
 
 def set_session_cookies(response: Response, session: AuthSession, secure: bool) -> None:
-    common = {"httponly": True, "secure": secure, "samesite": "lax", "path": "/"}
     response.set_cookie(
-        ACCESS_COOKIE, session.access_token, max_age=max(60, session.expires_in), **common
+        ACCESS_COOKIE,
+        session.access_token,
+        max_age=max(60, session.expires_in),
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
     )
-    response.set_cookie(REFRESH_COOKIE, session.refresh_token, max_age=60 * 60 * 24 * 30, **common)
+    response.set_cookie(
+        REFRESH_COOKIE,
+        session.refresh_token,
+        max_age=60 * 60 * 24 * 30,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
 
 
 def clear_session_cookies(response: Response, secure: bool) -> None:
@@ -331,7 +345,7 @@ def clear_session_cookies(response: Response, secure: bool) -> None:
 class ControlPlaneSecurityMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
-        app: object,
+        app: ASGIApp,
         *,
         auth: SupabaseAuthAdapter,
         access: AccessControlPort,

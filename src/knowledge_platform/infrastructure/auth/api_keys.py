@@ -35,11 +35,28 @@ class ApiKeyAuthenticator:
         result = self._commercial.authenticate_api_key(presented_key)
         if result is None:
             return None
+        key_id = result.get("key_id")
+        if not isinstance(key_id, UUID):
+            raise ValueError("malformed API key principal")
+        workspace_id = result.get("workspace_id")
+        if not isinstance(workspace_id, UUID):
+            raise ValueError("malformed API key principal")
+        created_by = result.get("created_by")
+        if not isinstance(created_by, UUID):
+            raise ValueError("malformed API key principal")
+        raw_scopes = result.get("scopes")
+        if not isinstance(raw_scopes, (list, tuple)):
+            raise ValueError("malformed API key principal")
+        scopes: list[str] = []
+        for scope in raw_scopes:
+            if not isinstance(scope, str):
+                raise ValueError("malformed API key principal")
+            scopes.append(scope)
         return ApiKeyPrincipal(
-            key_id=result["key_id"],
-            workspace_id=result["workspace_id"],
-            scopes=tuple(result.get("scopes") or ()),
-            created_by=result["created_by"],
+            key_id=key_id,
+            workspace_id=workspace_id,
+            scopes=tuple(scopes),
+            created_by=created_by,
         )
 
     @staticmethod

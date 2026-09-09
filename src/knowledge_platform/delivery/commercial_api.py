@@ -2,6 +2,7 @@
 
 import re
 from datetime import datetime
+from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, Request
@@ -68,7 +69,7 @@ def create_commercial_router(service: CommercialPort, *, system: bool = False) -
     router = APIRouter(prefix="/api/system" if system else "/api")
 
     def user(request: Request) -> UUID:
-        return request.state.user.id
+        return cast(UUID, request.state.user.id)
 
     @router.get("/workspaces/{workspace_id}/plans")
     def plans(workspace_id: UUID, request: Request) -> list[dict[str, object]]:

@@ -3,7 +3,7 @@
 
 import logging
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 from urllib.parse import unquote_to_bytes
 from uuid import UUID
 
@@ -158,8 +158,9 @@ def create_management_router(
             payload.name,
             ai_execution_enabled=payload.ai_execution_enabled,
         )
+        workspace_id = cast(UUID, value["id"])
         return WorkspaceResponse(
-            id=value["id"],
+            id=workspace_id,
             name=str(value["name"]),
             operational_status=str(value.get("operational_status", "ACTIVE")),
             ai_execution_enabled=bool(value.get("ai_execution_enabled", True)),
@@ -272,7 +273,9 @@ def create_management_router(
             raise HTTPException(status_code=404, detail="source not found") from exc
         if artifact is None:
             upload_allowed = source.lifecycle.value in {"registered", "failed", "ready"}
-            artifact_state = (
+            artifact_state: Literal[
+                "AWAITING_UPLOAD", "STORED", "LEGACY_UNAVAILABLE", "UNAVAILABLE"
+            ] = (
                 "AWAITING_UPLOAD"
                 if source.lifecycle.value in {"registered", "failed"}
                 else "LEGACY_UNAVAILABLE"

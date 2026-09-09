@@ -1,5 +1,6 @@
 """Stage 7B workspace administrative APIs."""
 
+from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
@@ -18,7 +19,7 @@ def create_administration_router(service: AdministrationPort, *, system: bool = 
     router = APIRouter(prefix=prefix)
 
     def user(request: Request) -> UUID:
-        return request.state.user.id
+        return cast(UUID, request.state.user.id)
 
     @router.get("/usage")
     def usage(

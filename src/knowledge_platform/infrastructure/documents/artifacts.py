@@ -79,10 +79,11 @@ class FilesystemOriginalArtifactStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             sha256 = digest.hexdigest()
+            stored_at = datetime.now(UTC)
             artifact = OriginalArtifact(
                 workspace_id=workspace_id, source_id=source_id,
                 original_filename=safe_name, suffix=suffix, media_type=media_type,
-                byte_size=size, sha256=sha256, stored_at=datetime.now(UTC),
+                byte_size=size, sha256=sha256, stored_at=stored_at,
             )
             payload_path = directory / "original"
             metadata_path = directory / "metadata.json"
@@ -98,7 +99,7 @@ class FilesystemOriginalArtifactStore:
                             "media_type": artifact.media_type,
                             "byte_size": artifact.byte_size,
                             "sha256": artifact.sha256,
-                            "stored_at": artifact.stored_at.isoformat(),
+                            "stored_at": stored_at.isoformat(),
                         },
                         metadata_file,
                         sort_keys=True,

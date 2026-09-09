@@ -92,4 +92,4 @@ class SqlAlchemyProviderConfigurationStore:
                     "request_id": request_id,
                 },
             ).mappings().one()
-        return self._configuration(cast(RowMapping, row))
+        return self._configuration(row)
