@@ -14,7 +14,7 @@ def test_product_page_mentions_operational_evaluation_surface() -> None:
     app = Path("frontend/app/pages.js").read_text(encoding="utf-8")
     assert 'lang="ar" dir="rtl"' in index
     assert "/app/evaluation" in routes
-    assert "/api/evaluation/suites" in app
+    assert "/api/workspaces/${state.workspaceId}/evaluation/suites" in app
     assert {route.path for route in create_app().routes} >= {"/health", "/ready", "/app"}
 
 

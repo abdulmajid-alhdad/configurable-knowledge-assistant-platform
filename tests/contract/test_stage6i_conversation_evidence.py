@@ -201,7 +201,7 @@ def test_conversation_list_delivery_returns_real_summary_and_filter() -> None:
     conversation = _conversation_with_outcome(MessageOutcome.GROUNDED)
 
     class Services:
-        received: tuple[object, object] | None = None
+        received: tuple[object, object, object] | None = None
 
         def list_conversations(self, workspace_id, assistant_id=None, conversation_status=None):
             self.received = (workspace_id, assistant_id, conversation_status)
@@ -220,7 +220,9 @@ def test_conversation_list_delivery_returns_real_summary_and_filter() -> None:
     )
 
     assert services.received == (
-        conversation.workspace_id.value, conversation.assistant_id.value
+        conversation.workspace_id.value,
+        conversation.assistant_id.value,
+        ConversationStatus.ACTIVE,
     )
     assert result[0].id == conversation.id.value
     assert result[0].assistant_id == conversation.assistant_id.value

@@ -177,7 +177,7 @@ def test_document_rag_insufficient_evidence_and_egress_denial() -> None:
         embeddings=FakeEmbeddings(),
         vectors=VectorSearchStore(),
         model=model,
-        egress=DataEgressPolicy(),
+        egress=DataEgressPolicy(True),
     )
     empty = service.ask(
         workspace_id=workspace_id,
