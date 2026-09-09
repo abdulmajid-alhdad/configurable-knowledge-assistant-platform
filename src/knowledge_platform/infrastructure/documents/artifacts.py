@@ -6,9 +6,13 @@ import json
 import os
 import tempfile
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 
-from knowledge_platform.modules.document_knowledge.artifacts import OriginalArtifact
+from knowledge_platform.modules.document_knowledge.artifacts import (
+    OriginalArtifact,
+    OriginalArtifactIntegrityError,
+)
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.workspace_assistant.domain.identifiers import WorkspaceId
 
@@ -21,13 +25,30 @@ class FilesystemOriginalArtifactStore:
         return self._root / "workspaces" / str(workspace_id.value) / "sources" / str(source_id.value)
 
     def get(self, *, workspace_id: WorkspaceId, source_id: KnowledgeSourceId) -> OriginalArtifact | None:
-        path = self._directory(workspace_id, source_id) / "metadata.json"
-        if not path.is_file():
+        directory = self._directory(workspace_id, source_id)
+        metadata_path = directory / "metadata.json"
+        payload_path = directory / "original"
+        metadata_exists = metadata_path.is_file()
+        payload_exists = payload_path.is_file()
+        if not metadata_exists and not payload_exists:
             return None
-        return OriginalArtifact(
-            workspace_id=workspace_id, source_id=source_id,
-            **json.loads(path.read_text(encoding="utf-8")),
-        )
+        if metadata_exists is not payload_exists:
+            raise OriginalArtifactIntegrityError(
+                "original artifact metadata and payload are incomplete"
+            )
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            stored_at = metadata.pop("stored_at", None)
+            return OriginalArtifact(
+                workspace_id=workspace_id,
+                source_id=source_id,
+                stored_at=datetime.fromisoformat(stored_at) if stored_at else None,
+                **metadata,
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise OriginalArtifactIntegrityError(
+                "original artifact metadata is invalid"
+            ) from exc
 
     def exists(self, *, workspace_id: WorkspaceId, source_id: KnowledgeSourceId) -> bool:
         return self.get(workspace_id=workspace_id, source_id=source_id) is not None
@@ -42,6 +63,8 @@ class FilesystemOriginalArtifactStore:
         directory = self._directory(workspace_id, source_id)
         directory.mkdir(parents=True, exist_ok=True)
         existing = self.get(workspace_id=workspace_id, source_id=source_id)
+        if existing is not None:
+            raise ValueError("source already has an original artifact")
         digest = hashlib.sha256()
         size = 0
         fd, temporary = tempfile.mkstemp(prefix=".upload-", dir=directory)
@@ -56,21 +79,40 @@ class FilesystemOriginalArtifactStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             sha256 = digest.hexdigest()
-            if existing is not None and existing.sha256 != sha256:
-                raise ValueError("source already has a different original artifact")
             artifact = OriginalArtifact(
                 workspace_id=workspace_id, source_id=source_id,
                 original_filename=safe_name, suffix=suffix, media_type=media_type,
-                byte_size=size, sha256=sha256,
+                byte_size=size, sha256=sha256, stored_at=datetime.now(UTC),
             )
-            os.replace(temporary, directory / "original")
-            (directory / "metadata.json").write_text(
-                json.dumps({
-                    "original_filename": artifact.original_filename,
-                    "suffix": artifact.suffix, "media_type": artifact.media_type,
-                    "byte_size": artifact.byte_size, "sha256": artifact.sha256,
-                }, sort_keys=True), encoding="utf-8",
-            )
+            payload_path = directory / "original"
+            metadata_path = directory / "metadata.json"
+            payload_linked = False
+            try:
+                os.link(temporary, payload_path)
+                payload_linked = True
+                with metadata_path.open("x", encoding="utf-8") as metadata_file:
+                    json.dump(
+                        {
+                            "original_filename": artifact.original_filename,
+                            "suffix": artifact.suffix,
+                            "media_type": artifact.media_type,
+                            "byte_size": artifact.byte_size,
+                            "sha256": artifact.sha256,
+                            "stored_at": artifact.stored_at.isoformat(),
+                        },
+                        metadata_file,
+                        sort_keys=True,
+                    )
+                    metadata_file.flush()
+                    os.fsync(metadata_file.fileno())
+            except FileExistsError as exc:
+                if payload_linked and payload_path.is_file():
+                    payload_path.unlink()
+                raise ValueError("source already has an original artifact") from exc
+            except Exception:
+                if payload_linked and payload_path.is_file():
+                    payload_path.unlink()
+                raise
             return artifact
         finally:
             if os.path.exists(temporary):

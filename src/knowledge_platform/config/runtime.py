@@ -1,5 +1,6 @@
 """Environment-backed production runtime configuration."""
 
+import math
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
@@ -44,6 +45,18 @@ class RuntimeSettings(BaseSettings):
     model_credential: str | None = Field(
         default=None, validation_alias="MODEL_CREDENTIAL_REFERENCE"
     )
+    supabase_auth_url: str | None = Field(
+        default=None, validation_alias="SUPABASE_AUTH_URL"
+    )
+    supabase_publishable_key: SecretStr | None = Field(
+        default=None, validation_alias="SUPABASE_PUBLISHABLE_KEY", repr=False
+    )
+    supabase_secret_key: SecretStr | None = Field(
+        default=None, validation_alias="SUPABASE_SECRET_KEY", repr=False
+    )
+    session_cookie_secure: bool = Field(
+        default=True, validation_alias="SESSION_COOKIE_SECURE"
+    )
     external_private_data_allowed: bool = Field(
         default=False, validation_alias="EXTERNAL_PRIVATE_DATA_ALLOWED"
     )
@@ -54,6 +67,11 @@ class RuntimeSettings(BaseSettings):
     max_artifact_bytes: int = Field(
         default=10_000_000, validation_alias="KNOWLEDGE_MAX_ARTIFACT_BYTES"
     )
+    # Calibrated default for the current BGE-M3 reference corpus; deployments
+    # should evaluate and override this value for materially different corpora.
+    max_retrieval_distance: float = Field(
+        default=0.4, validation_alias="MAX_RETRIEVAL_DISTANCE"
+    )
 
     @field_validator(
         "embedding_endpoint",
@@ -62,6 +80,7 @@ class RuntimeSettings(BaseSettings):
         "model_endpoint",
         "model_reference",
         "model_credential",
+        "supabase_auth_url",
         mode="before",
     )
     @classmethod
@@ -72,21 +91,28 @@ class RuntimeSettings(BaseSettings):
             raise ValueError("provider configuration must not be blank")
         return value.strip()
 
+    @field_validator("supabase_secret_key", mode="before")
+    @classmethod
+    def normalize_optional_admin_secret(cls, value: object) -> object:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
+
     @model_validator(mode="after")
     def validate_production_requirements(self) -> "RuntimeSettings":
+        if (
+            not math.isfinite(self.max_retrieval_distance)
+            or not 0.0 <= self.max_retrieval_distance <= 2.0
+        ):
+            raise ValueError("max retrieval distance must be finite and between 0 and 2")
         if self.mode == "production":
             required = (
                 self.database_dsn,
-                self.embedding_endpoint,
-                self.embedding_model,
-                self.embedding_credential,
-                self.embedding_dimensions,
-                self.model_endpoint,
-                self.model_reference,
-                self.model_credential,
+                self.supabase_auth_url,
+                self.supabase_publishable_key,
             )
             if any(value is None for value in required):
-                raise ValueError("production provider configuration is incomplete")
+                raise ValueError("production platform configuration is incomplete")
         return self
 
     @property

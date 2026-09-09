@@ -1,0 +1,1 @@
+"""Workspace identity and authorization contracts."""

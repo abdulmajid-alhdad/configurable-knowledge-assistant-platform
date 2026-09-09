@@ -11,6 +11,9 @@ class EnvironmentCredentialResolver(CredentialResolverPort):
 
     def resolve(self, reference: CredentialReference) -> str:
         value = os.environ.get(reference.name)
-        if value is None or not value.strip():
+        if value is None:
             raise RuntimeError(f"credential is unavailable for reference {reference.name}")
-        return value
+        normalized = value.strip()
+        if not normalized:
+            raise RuntimeError(f"credential is unavailable for reference {reference.name}")
+        return normalized

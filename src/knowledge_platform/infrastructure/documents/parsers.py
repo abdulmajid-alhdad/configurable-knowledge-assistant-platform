@@ -87,20 +87,34 @@ class PyPdfDocumentParser:
 
 class JsonDocumentParser:
     def parse(self, content: bytes, *, reference: str = "document") -> ParsedDocument:
-        value = json.loads(content.decode("utf-8"))
-        sections: list[ParsedDocumentSection] = []
+        value = json.loads(content.decode("utf-8-sig"))
 
-        def visit(item: object, pointer: str) -> None:
+        def render(item: object, path: str = "") -> list[str]:
+            if item is None:
+                return []
             if isinstance(item, dict):
+                lines: list[str] = []
                 for key, child in item.items():
-                    visit(child, f"{pointer}/{str(key).replace('~', '~0').replace('/', '~1')}")
-            elif isinstance(item, list):
-                for i, child in enumerate(item):
-                    visit(child, f"{pointer}/{i}")
-            else:
-                sections.append(ParsedDocumentSection(str(item), f"{reference}{pointer or '/'}"))
+                    child_path = f"{path}.{key}" if path else str(key)
+                    lines.extend(render(child, child_path))
+                return lines
+            if isinstance(item, list):
+                lines = []
+                for index, child in enumerate(item):
+                    child_path = f"{path}.{index}" if path else str(index)
+                    lines.extend(render(child, child_path))
+                return lines
+            return [f"{path}: {item}" if path else str(item)]
 
-        visit(value, "")
+        if isinstance(value, list):
+            sections = [
+                ParsedDocumentSection(
+                    "\n".join(render(record)), f"{reference}/{index}"
+                )
+                for index, record in enumerate(value)
+            ]
+        else:
+            sections = [ParsedDocumentSection("\n".join(render(value)), reference)]
         return _ensure(sections)
 
 

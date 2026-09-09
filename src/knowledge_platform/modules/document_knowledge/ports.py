@@ -32,8 +32,34 @@ class EmbeddingGatewayPort(Protocol):
     def embed_documents(self, texts: tuple[str, ...]) -> tuple[EmbeddingVector, ...]: ...
 
 
+@dataclass(frozen=True, slots=True)
+class GroundedModelAnswer:
+    """Provider-neutral grounded generation result."""
+
+    answer: str
+    evidence_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.answer, str) or not self.answer.strip():
+            raise ValueError("grounded model answer must not be blank")
+        if not isinstance(self.evidence_ids, tuple) or not self.evidence_ids:
+            raise ValueError("grounded model answer requires evidence ids")
+        if not all(isinstance(item, str) and item.strip() for item in self.evidence_ids):
+            raise ValueError("grounded model evidence ids must be nonblank strings")
+
+
+@dataclass(frozen=True, slots=True)
+class ModelInsufficientEvidence:
+    """Model disposition indicating supplied evidence cannot answer the question."""
+
+
+ModelGenerationResult = GroundedModelAnswer | ModelInsufficientEvidence
+
+
 class ModelPort(Protocol):
-    def generate(self, *, question: str, context: str) -> str: ...
+    def generate(
+        self, *, question: str, context: str, assistant_instructions: str | None = None
+    ) -> ModelGenerationResult: ...
 
 
 class VectorSearchPort(Protocol):

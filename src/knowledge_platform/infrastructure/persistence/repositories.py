@@ -1,12 +1,22 @@
 """Explicit persistence adapters for Workspace and Assistant."""
 
-from sqlalchemy import delete, select, update
+from dataclasses import replace
+from uuid import UUID
+
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session
 
-from knowledge_platform.modules.conversation.domain.conversation import Conversation
+from knowledge_platform.modules.conversation.domain.conversation import (
+    Conversation,
+    ConversationStatus,
+)
 from knowledge_platform.modules.conversation.domain.identifiers import ConversationId
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
+from knowledge_platform.modules.system_conversation.domain import (
+    SystemConversation,
+    SystemConversationStatus,
+)
 from knowledge_platform.modules.workspace_assistant.domain.assistant import Assistant
 from knowledge_platform.modules.workspace_assistant.domain.identifiers import (
     AssistantId,
@@ -21,7 +31,11 @@ from .mappers import (
     conversation_to_record,
     knowledge_source_from_record,
     knowledge_source_to_record,
+    message_evidence_to_records,
     message_to_record,
+    system_conversation_from_records,
+    system_conversation_to_record,
+    system_message_to_record,
     workspace_from_record,
     workspace_to_record,
 )
@@ -30,7 +44,10 @@ from .models import (
     AssistantRecord,
     ConversationRecord,
     KnowledgeSourceRecord,
+    MessageEvidenceRecord,
     MessageRecord,
+    SystemConversationMessageRecord,
+    SystemConversationRecord,
     WorkspaceRecord,
 )
 
@@ -46,7 +63,19 @@ class WorkspaceRepository:
 
     def get(self, workspace_id: WorkspaceId) -> Workspace | None:
         record = self._session.get(WorkspaceRecord, workspace_id.value)
-        return workspace_from_record(record) if record is not None else None
+        if record is None:
+            return None
+        workspace = workspace_from_record(record)
+        display_name = self._session.execute(
+            text(
+                "select display_name from platform.workspace_settings "
+                "where workspace_id=:workspace"
+            ),
+            {"workspace": workspace_id.value},
+        ).scalar_one_or_none()
+        if isinstance(display_name, str) and display_name.strip():
+            return replace(workspace, name=display_name)
+        return workspace
 
 
 class AssistantRepository:
@@ -82,25 +111,24 @@ class AssistantRepository:
             raise ValueError("assistant workspace does not match persistence workspace")
         if previous.id != reconfigured.id:
             raise ValueError("assistant identity does not match reconfiguration")
-        result = self._session.execute(
-            update(AssistantRecord)
-            .where(
-                AssistantRecord.id == previous.id.value,
-                AssistantRecord.workspace_id == workspace_id.value,
-            )
-            .values(
-                name=reconfigured.name,
-                description=reconfigured.description,
-                instructions=reconfigured.instructions,
-                language=reconfigured.language,
-                model_configuration={
-                    "provider": reconfigured.model_configuration.provider,
-                    "model_reference": reconfigured.model_configuration.model_reference,
-                },
-                retrieval_configuration={},
-            )
-        )
-        if getattr(result, "rowcount", 0) == 0:
+        changed = self._session.execute(
+            text(
+                "select platform.update_assistant_administration("
+                ":workspace,:assistant,:name,:description,:instructions,"
+                ":language,:provider,:model_reference)"
+            ),
+            {
+                "workspace": workspace_id.value,
+                "assistant": previous.id.value,
+                "name": reconfigured.name,
+                "description": reconfigured.description,
+                "instructions": reconfigured.instructions,
+                "language": reconfigured.language,
+                "provider": reconfigured.model_configuration.provider,
+                "model_reference": reconfigured.model_configuration.model_reference,
+            },
+        ).scalar_one()
+        if changed is not True:
             raise RuntimeError("assistant not found")
 
 
@@ -171,6 +199,20 @@ class KnowledgeSourceRepository:
         record = self._session.scalar(statement)
         return knowledge_source_from_record(record) if record is not None else None
 
+    def get_for_update(
+        self, *, source_id: KnowledgeSourceId, workspace_id: WorkspaceId
+    ) -> KnowledgeSource | None:
+        statement = (
+            select(KnowledgeSourceRecord)
+            .where(
+                KnowledgeSourceRecord.id == source_id.value,
+                KnowledgeSourceRecord.workspace_id == workspace_id.value,
+            )
+            .with_for_update()
+        )
+        record = self._session.scalar(statement)
+        return knowledge_source_from_record(record) if record is not None else None
+
     def list_for_workspace(self, workspace_id: WorkspaceId) -> list[KnowledgeSource]:
         statement = select(KnowledgeSourceRecord).where(
             KnowledgeSourceRecord.workspace_id == workspace_id.value
@@ -231,7 +273,111 @@ class ConversationRepository:
             .where(MessageRecord.conversation_id == conversation_id.value)
             .order_by(MessageRecord.sequence)
         ))
-        return conversation_from_records(record, messages)
+        evidence = list(self._session.scalars(
+            select(MessageEvidenceRecord)
+            .where(MessageEvidenceRecord.conversation_id == conversation_id.value)
+            .order_by(
+                MessageEvidenceRecord.message_sequence,
+                MessageEvidenceRecord.ordinal,
+            )
+        ))
+        return conversation_from_records(record, messages, evidence)
+
+    def list_for_workspace(
+        self, *, workspace_id: WorkspaceId,
+        assistant_id: AssistantId | None = None,
+        status: ConversationStatus | None = ConversationStatus.ACTIVE,
+    ) -> list[Conversation]:
+        statement = select(ConversationRecord).where(
+            ConversationRecord.workspace_id == workspace_id.value
+        )
+        if assistant_id is not None:
+            statement = statement.where(
+                ConversationRecord.assistant_id == assistant_id.value
+            )
+        if status is not None:
+            statement = statement.where(ConversationRecord.status == status.value)
+        records = list(self._session.scalars(
+            statement.order_by(
+                ConversationRecord.created_at.desc().nulls_last(),
+                ConversationRecord.id.desc(),
+            )
+        ))
+        if not records:
+            return []
+        conversation_ids = [record.id for record in records]
+        messages = list(self._session.scalars(
+            select(MessageRecord)
+            .where(MessageRecord.conversation_id.in_(conversation_ids))
+            .order_by(MessageRecord.conversation_id, MessageRecord.sequence)
+        ))
+        evidence = list(self._session.scalars(
+            select(MessageEvidenceRecord)
+            .where(MessageEvidenceRecord.conversation_id.in_(conversation_ids))
+            .order_by(
+                MessageEvidenceRecord.conversation_id,
+                MessageEvidenceRecord.message_sequence,
+                MessageEvidenceRecord.ordinal,
+            )
+        ))
+        messages_by_conversation: dict[object, list[MessageRecord]] = {}
+        for message in messages:
+            messages_by_conversation.setdefault(message.conversation_id, []).append(message)
+        evidence_by_conversation: dict[object, list[MessageEvidenceRecord]] = {}
+        for item in evidence:
+            evidence_by_conversation.setdefault(item.conversation_id, []).append(item)
+        return [
+            conversation_from_records(
+                record,
+                messages_by_conversation.get(record.id, []),
+                evidence_by_conversation.get(record.id, []),
+            )
+            for record in records
+        ]
+
+    def rename(
+        self,
+        *,
+        conversation_id: ConversationId,
+        workspace_id: WorkspaceId,
+        title: str,
+    ) -> Conversation | None:
+        changed = self._session.execute(
+            text(
+                "select platform.rename_workspace_conversation"
+                "(:workspace,:conversation,:title)"
+            ),
+            {
+                "workspace": workspace_id.value,
+                "conversation": conversation_id.value,
+                "title": title,
+            },
+        ).scalar_one()
+        if not changed:
+            return None
+        return self.get(conversation_id=conversation_id, workspace_id=workspace_id)
+
+    def set_archived(
+        self,
+        *,
+        conversation_id: ConversationId,
+        workspace_id: WorkspaceId,
+        archived: bool,
+    ) -> Conversation | None:
+        changed = self._session.execute(
+            text(
+                "select platform.set_workspace_conversation_archived"
+                "(:workspace,:conversation,:archived)"
+            ),
+            {
+                "workspace": workspace_id.value,
+                "conversation": conversation_id.value,
+                "archived": archived,
+            },
+        ).scalar_one()
+        if not changed:
+            return None
+        return self.get(conversation_id=conversation_id, workspace_id=workspace_id)
 
 
 class MessageRepository:
@@ -249,4 +395,84 @@ class MessageRepository:
         expected = len(conversation.messages) - 1
         if message.sequence != expected:
             raise ValueError("message sequence does not match append position")
-        self._session.add(message_to_record(conversation.id, message))
+        record = message_to_record(conversation.id, message)
+        self._session.add(record)
+        evidence = message_evidence_to_records(conversation.id, message)
+        if evidence:
+            # ORM mapper ordering alone does not establish a unit-of-work
+            # dependency between these separately mapped records. Materialize
+            # both pending messages before inserting their FK-backed evidence;
+            # the outer workspace transaction still owns the only commit.
+            self._session.flush()
+            self._session.add_all(evidence)
+
+
+class SystemConversationRepository:
+    """Persistence adapter for the distinct SYSTEM-scope aggregate."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, conversation: SystemConversation) -> None:
+        self._session.add(system_conversation_to_record(conversation))
+
+    def get(self, conversation_id: UUID) -> SystemConversation | None:
+        record = self._session.get(SystemConversationRecord, conversation_id)
+        if record is None:
+            return None
+        messages = list(
+            self._session.scalars(
+                select(SystemConversationMessageRecord)
+                .where(
+                    SystemConversationMessageRecord.conversation_id == conversation_id
+                )
+                .order_by(SystemConversationMessageRecord.sequence)
+            )
+        )
+        return system_conversation_from_records(record, messages)
+
+    def list(
+        self, *, status: SystemConversationStatus | None = SystemConversationStatus.ACTIVE
+    ) -> list[SystemConversation]:
+        statement = select(SystemConversationRecord)
+        if status is not None:
+            statement = statement.where(SystemConversationRecord.status == status.value)
+        records = list(
+            self._session.scalars(
+                statement.order_by(
+                    SystemConversationRecord.updated_at.desc(),
+                    SystemConversationRecord.id.desc(),
+                )
+            )
+        )
+        return [
+            value
+            for record in records
+            if (value := self.get(record.id)) is not None
+        ]
+
+    def rename(self, conversation_id: UUID, title: str) -> SystemConversation | None:
+        changed = self._session.execute(
+            text("select platform.rename_system_conversation(:conversation,:title)"),
+            {"conversation": conversation_id, "title": title},
+        ).scalar_one()
+        return self.get(conversation_id) if changed else None
+
+    def set_archived(
+        self, conversation_id: UUID, archived: bool
+    ) -> SystemConversation | None:
+        changed = self._session.execute(
+            text(
+                "select platform.set_system_conversation_archived"
+                "(:conversation,:archived)"
+            ),
+            {"conversation": conversation_id, "archived": archived},
+        ).scalar_one()
+        return self.get(conversation_id) if changed else None
+
+    def add_message(self, conversation: SystemConversation) -> None:
+        if not conversation.messages:
+            raise ValueError("system conversation has no message to append")
+        self._session.add(
+            system_message_to_record(conversation.id, conversation.messages[-1])
+        )

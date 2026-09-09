@@ -25,4 +25,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "knowledge_platform.delivery.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "knowledge_platform.bootstrap.asgi:app", "--host", "0.0.0.0", "--port", "8000"]

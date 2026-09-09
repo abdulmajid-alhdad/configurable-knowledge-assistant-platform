@@ -3,6 +3,8 @@
 import json
 from io import BytesIO
 
+import pytest
+
 from knowledge_platform.application.document_rag import DocumentRagService
 from knowledge_platform.infrastructure.documents.parsers import (
     DocxDocumentParser,
@@ -49,7 +51,83 @@ def test_txt_json_normalization_chunking_and_provenance() -> None:
     chunks = chunk(normalized, size=3, overlap=1)
     assert chunks and all(item.provenance_locator == "txt" for item in chunks)
     json_doc = JsonDocumentParser().parse(json.dumps({"title": "Yemen"}).encode(), reference="json")
-    assert json_doc.sections[0].provenance_locator == "json/title"
+    assert json_doc.sections[0].provenance_locator == "json"
+    assert "title: Yemen" in json_doc.sections[0].content
+
+
+def test_json_root_array_preserves_record_boundaries() -> None:
+    parsed = JsonDocumentParser().parse(
+        json.dumps([{"name": "first"}, {"name": "second"}]).encode(),
+        reference="dataset.json",
+    )
+    assert [section.provenance_locator for section in parsed.sections] == [
+        "dataset.json/0", "dataset.json/1"
+    ]
+    assert "first" in parsed.sections[0].content
+    assert "second" in parsed.sections[1].content
+    assert "second" not in parsed.sections[0].content
+
+
+def test_json_nested_record_textualizes_paths_and_omits_nulls() -> None:
+    parsed = JsonDocumentParser().parse(
+        b'{"meta":{"count":2,"enabled":true,"missing":null}}',
+        reference="record.json",
+    )
+    assert len(parsed.sections) == 1
+    text = parsed.sections[0].content
+    assert "meta.count: 2" in text
+    assert "meta.enabled: True" in text
+    assert "None" not in text
+
+
+def test_json_messages_are_one_semantic_record() -> None:
+    parsed = JsonDocumentParser().parse(
+        json.dumps(
+            [{"messages": [{"role": "user", "content": "question"},
+                            {"role": "assistant", "content": "answer"}]}]
+        ).encode(),
+        reference="dataset.json",
+    )
+    assert len(parsed.sections) == 1
+    assert "messages.0.role: user" in parsed.sections[0].content
+    assert "messages.0.content: question" in parsed.sections[0].content
+    assert "messages.1.role: assistant" in parsed.sections[0].content
+    assert "messages.1.content: answer" in parsed.sections[0].content
+
+
+def test_json_record_provenance_survives_normalize_and_chunk() -> None:
+    parsed = JsonDocumentParser().parse(b'[{"value":"kept"}]', reference="dataset.json")
+    normalized = normalize(parsed)
+    chunks = chunk(normalized)
+    assert len(chunks) == 1
+    assert chunks[0].provenance_locator == "dataset.json/0"
+    assert "value: kept" in chunks[0].content
+
+
+def test_json_large_record_can_split_while_retaining_record_provenance() -> None:
+    parsed = JsonDocumentParser().parse(
+        json.dumps({"text": "x" * 1700}).encode(), reference="large.json"
+    )
+    chunks = chunk(normalize(parsed), size=800, overlap=80)
+    assert len(chunks) > 1
+    assert all(item.provenance_locator == "large.json" for item in chunks)
+
+
+def test_json_parser_accepts_utf8_bom_without_changing_sections() -> None:
+    payload = json.dumps(
+        {"title": "Yemen", "items": [{"name": "Sanaa"}, "historical"]}
+    ).encode("utf-8")
+    parser = JsonDocumentParser()
+
+    ordinary = parser.parse(payload, reference="dataset.json")
+    with_bom = parser.parse(b"\xef\xbb\xbf" + payload, reference="dataset.json")
+
+    assert with_bom == ordinary
+
+
+def test_json_parser_rejects_malformed_json() -> None:
+    with pytest.raises(json.JSONDecodeError):
+        JsonDocumentParser().parse(b'{"title":', reference="dataset.json")
 
 
 def test_empty_source_scope_is_empty_and_never_search_all() -> None:

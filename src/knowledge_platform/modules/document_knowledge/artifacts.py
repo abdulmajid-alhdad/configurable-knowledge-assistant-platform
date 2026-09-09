@@ -3,6 +3,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
@@ -18,6 +19,11 @@ class OriginalArtifact:
     media_type: str | None
     byte_size: int
     sha256: str
+    stored_at: datetime | None = None
+
+
+class OriginalArtifactIntegrityError(RuntimeError):
+    """The persisted artifact metadata and immutable payload disagree."""
 
 
 class OriginalArtifactStorePort(Protocol):

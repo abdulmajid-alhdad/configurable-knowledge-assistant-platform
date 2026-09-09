@@ -23,6 +23,7 @@ class EvaluationCase:
     query: str
     expected_source_ids: frozenset[KnowledgeSourceId]
     reference_answer: str | None = None
+    expected_outcome: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "key", required_text(self.key, field="key"))
@@ -42,6 +43,15 @@ class EvaluationCase:
                 "reference_answer",
                 required_text(self.reference_answer, field="reference_answer"),
             )
+        if self.expected_outcome is not None:
+            normalized = required_text(self.expected_outcome, field="expected_outcome")
+            if normalized not in {
+                "GroundedAnswer",
+                "InsufficientEvidence",
+                "PolicyDenied",
+            }:
+                raise ValueError("expected_outcome is not a supported terminal outcome")
+            object.__setattr__(self, "expected_outcome", normalized)
 
 
 @dataclass(frozen=True, slots=True)

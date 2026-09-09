@@ -30,7 +30,14 @@ def load_suite(path: Path) -> EvaluationSuiteArtifact:
         raise ValueError("cases must be a list")
     cases = []
     for item in payload["cases"]:
-        allowed = {"key", "type", "query", "expected_source_ids", "reference_answer"}
+        allowed = {
+            "key",
+            "type",
+            "query",
+            "expected_source_ids",
+            "reference_answer",
+            "expected_outcome",
+        }
         if not isinstance(item, dict) or not set(item) <= allowed:
             raise ValueError("unknown suite case field")
         try:
@@ -44,6 +51,7 @@ def load_suite(path: Path) -> EvaluationSuiteArtifact:
                         for value in item.get("expected_source_ids", [])
                     ),
                     reference_answer=item.get("reference_answer"),
+                    expected_outcome=item.get("expected_outcome"),
                 )
             )
         except (KeyError, TypeError, ValueError) as exc:

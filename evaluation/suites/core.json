@@ -1,9 +1,9 @@
 {
   "key": "core",
-  "version": "1.0",
+  "version": "1.1",
   "name": "Core deterministic behaviors",
   "cases": [
-    {"key": "grounded", "type": "deterministic", "query": "What is known?", "expected_source_ids": []},
-    {"key": "insufficient", "type": "deterministic", "query": "Unknown", "expected_source_ids": []}
+    {"key": "grounded", "type": "deterministic", "query": "What is known?", "expected_source_ids": [], "expected_outcome": "GroundedAnswer"},
+    {"key": "insufficient", "type": "deterministic", "query": "Unknown", "expected_source_ids": [], "expected_outcome": "InsufficientEvidence"}
   ]
 }

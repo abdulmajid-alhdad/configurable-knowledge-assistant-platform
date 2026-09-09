@@ -1,18 +1,45 @@
 # ruff: noqa: E501
 """FastAPI delivery surface for the portfolio demonstration."""
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from knowledge_platform.application.access_control import (
+    AccessConflict,
+    AccessDenied,
+    AccessNotFound,
+)
+from knowledge_platform.application.commercial import CommercialError
 from knowledge_platform.application.document_rag import DocumentRagService
+from knowledge_platform.application.evaluation_control import (
+    EvaluationControlError,
+    EvaluationErrorCode,
+)
+from knowledge_platform.delivery.access_control_api import create_access_router
+from knowledge_platform.delivery.administration_api import create_administration_router
+from knowledge_platform.delivery.auth_api import create_auth_router
+from knowledge_platform.delivery.commercial_api import create_commercial_router
 from knowledge_platform.delivery.conversation_api import create_conversation_router
 from knowledge_platform.delivery.evaluation_api import create_evaluation_router
+from knowledge_platform.delivery.identity_provisioning_api import (
+    create_identity_provisioning_router,
+)
 from knowledge_platform.delivery.product_api import create_management_router
+from knowledge_platform.delivery.provider_configuration_api import (
+    create_provider_configuration_router,
+)
+from knowledge_platform.delivery.provider_usage_api import create_provider_usage_router
+from knowledge_platform.delivery.security import ControlPlaneSecurityMiddleware
+from knowledge_platform.delivery.system_conversation_api import (
+    create_system_conversation_router,
+)
 from knowledge_platform.infrastructure.vector_search.store import VectorChunk, VectorSearchStore
-from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector
+from knowledge_platform.modules.document_knowledge.ports import EmbeddingVector, GroundedModelAnswer
 from knowledge_platform.modules.evidence_grounding.domain.contracts import (
     GroundedAnswer,
     InsufficientEvidence,
@@ -24,6 +51,10 @@ from knowledge_platform.reference.yemen_history import build_reference
 
 if TYPE_CHECKING:
     from knowledge_platform.bootstrap.application import ApplicationRuntime
+
+
+FRONTEND_ROOT = Path(__file__).resolve().parents[3] / "frontend"
+FRONTEND_ENTRYPOINT = FRONTEND_ROOT / "index.html"
 
 
 class AskRequest(BaseModel):
@@ -46,8 +77,16 @@ def _demo_service() -> AskService:
             return tuple(EmbeddingVector((1.0, 0.0)) for _ in texts)
 
     class Model:
-        def generate(self, *, question: str, context: str) -> str:
-            return "صنعاء مدينة تاريخية في اليمن."
+        def generate(
+            self,
+            *,
+            question: str,
+            context: str,
+            assistant_instructions: str | None = None,
+        ) -> GroundedModelAnswer:
+            return GroundedModelAnswer(
+                answer="Sanaa is a historic city in Yemen.", evidence_ids=("E1",)
+            )
 
     class DemoService:
         def ask(self, *, question: str) -> object:
@@ -106,11 +145,97 @@ def create_app(
     runtime: "ApplicationRuntime | None" = None,
 ) -> FastAPI:
     application = FastAPI(title="Configurable Knowledge Assistant Platform")
+    application.mount(
+        "/assets",
+        StaticFiles(directory=FRONTEND_ROOT),
+        name="frontend-assets",
+    )
     query_service = service or _demo_service()
     if runtime is not None:
-        application.include_router(create_management_router(runtime.management_services()))
+        access = runtime.access_control()
+        auth = runtime.auth_gateway()
+        application.include_router(
+            create_management_router(
+                runtime.management_services(), access, runtime.administration()
+            )
+        )
+        application.include_router(
+            create_management_router(
+                runtime.management_services(), access, runtime.administration(), system=True
+            )
+        )
         application.include_router(create_conversation_router(runtime.management_services()))
-        application.include_router(create_evaluation_router(runtime.evaluation_catalog()))
+        application.include_router(create_evaluation_router(runtime.evaluation_control()))
+        application.include_router(create_access_router(access))
+        application.include_router(create_access_router(access, system=True))
+        application.include_router(create_administration_router(runtime.administration()))
+        application.include_router(
+            create_administration_router(runtime.administration(), system=True)
+        )
+        application.include_router(create_commercial_router(runtime.commercial()))
+        application.include_router(create_commercial_router(runtime.commercial(), system=True))
+        application.include_router(
+            create_provider_usage_router(runtime.provider_usage())
+        )
+        application.include_router(
+            create_provider_configuration_router(runtime.provider_configuration())
+        )
+        application.include_router(
+            create_system_conversation_router(runtime.system_conversations())
+        )
+        application.include_router(
+            create_auth_router(auth, access, secure=runtime.settings.session_cookie_secure)
+        )
+        application.include_router(
+            create_identity_provisioning_router(runtime.identity_provisioning())
+        )
+        application.add_middleware(
+            ControlPlaneSecurityMiddleware,
+            auth=auth,
+            access=access,
+            cookie_secure=runtime.settings.session_cookie_secure,
+        )
+
+        @application.exception_handler(AccessDenied)
+        async def access_denied_handler(_request: object, _error: AccessDenied) -> JSONResponse:
+            return JSONResponse({"detail": "permission denied"}, status_code=403)
+
+        @application.exception_handler(AccessNotFound)
+        async def access_not_found_handler(_request: object, _error: AccessNotFound) -> JSONResponse:
+            return JSONResponse({"detail": "resource not found"}, status_code=404)
+
+        @application.exception_handler(AccessConflict)
+        async def access_conflict_handler(_request: object, error: AccessConflict) -> JSONResponse:
+            safe_codes = {
+                "ENTITLEMENT_LIMIT_REACHED", "ENTITLEMENT_NOT_CONFIGURED",
+                "SUBSCRIPTION_INACTIVE", "SECURITY_POLICY_DENIED",
+                "INVITATION_EXPIRY_EXCEEDS_POLICY", "INVITATION_INVALID",
+                "MEMBERSHIP_ALREADY_EXISTS",
+            }
+            detail = str(error)
+            if detail not in safe_codes:
+                detail = "operation conflicts with current access state"
+            return JSONResponse({"detail": detail}, status_code=409)
+
+        @application.exception_handler(CommercialError)
+        async def commercial_error_handler(_request: object, error: CommercialError) -> JSONResponse:
+            return JSONResponse({"detail": str(error)}, status_code=409)
+
+        @application.exception_handler(EvaluationControlError)
+        async def evaluation_error_handler(
+            _request: object, error: EvaluationControlError
+        ) -> JSONResponse:
+            status_code = {
+                EvaluationErrorCode.SUITE_NOT_FOUND: 404,
+                EvaluationErrorCode.RUN_NOT_FOUND: 404,
+                EvaluationErrorCode.ASSISTANT_NOT_FOUND: 404,
+                EvaluationErrorCode.MODE_UNSUPPORTED: 409,
+                EvaluationErrorCode.EXECUTION_FAILED: 502,
+            }[error.code]
+            payload: dict[str, object] = {"detail": error.code.value}
+            if error.run_id is not None:
+                payload["run_id"] = str(error.run_id)
+            return JSONResponse(payload, status_code=status_code)
 
     @application.get("/health")
     def health() -> dict[str, str]:
@@ -147,9 +272,26 @@ if(data.outcome==='GroundedAnswer'){card.append(text('h3','الإجابة'));car
 form.addEventListener('submit',async event=>{event.preventDefault();if(!question.value.trim()){result.replaceChildren(text('p','يرجى كتابة سؤال أولاً.','outcome warning'));question.focus();return}button.disabled=true;button.textContent='جارٍ البحث…';result.replaceChildren();try{const response=await fetch('/api/demo/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question:question.value})});render(await response.json())}catch(_){render({outcome:'TechnicalFailure'})}finally{button.disabled=false;button.textContent='اسأل المساعد'}});
 </script></body></html>"""
 
-    @application.get("/app", response_class=HTMLResponse)
-    def product() -> str:
-        return PRODUCT_HTML
+    def frontend_entrypoint() -> FileResponse:
+        return FileResponse(FRONTEND_ENTRYPOINT, media_type="text/html")
+
+    @application.get("/app", include_in_schema=False)
+    def workspace_frontend() -> FileResponse:
+        return frontend_entrypoint()
+
+    @application.get("/app/{frontend_path:path}", include_in_schema=False)
+    def workspace_frontend_deep_link(frontend_path: str) -> FileResponse:
+        del frontend_path
+        return frontend_entrypoint()
+
+    @application.get("/system", include_in_schema=False)
+    def system_frontend() -> FileResponse:
+        return frontend_entrypoint()
+
+    @application.get("/system/{frontend_path:path}", include_in_schema=False)
+    def system_frontend_deep_link(frontend_path: str) -> FileResponse:
+        del frontend_path
+        return frontend_entrypoint()
 
     @application.post("/api/demo/ask")
     def ask_demo(payload: AskRequest) -> JSONResponse:
@@ -174,11 +316,17 @@ PRODUCT_HTML = """<!doctype html>
 </style></head><body><div class="shell"><header class="top"><div class="brand"><h1>المساعد المعرفي</h1><p>مساعد قائم على المعرفة والأدلة</p></div><div class="status">● النظام متاح</div></header>
 <main class="grid"><aside class="stack"><section class="card stack"><h2 class="section-title">مساحة العمل</h2><label for="workspace">معرّف مساحة العمل</label><input id="workspace" placeholder="UUID" dir="ltr"><div class="row"><button id="loadWorkspace">تحميل</button><button id="newWorkspace" class="secondary">إنشاء</button></div><p id="workspaceState" class="muted" aria-live="polite">اختر مساحة عمل للبدء.</p></section>
 <section class="card stack"><h2 class="section-title">المساعد</h2><select id="assistants" aria-label="المساعدون"></select><input id="assistantName" placeholder="اسم المساعد"><input id="assistantInstructions" placeholder="تعليمات المساعد"><button id="createAssistant">إنشاء مساعد</button><p id="assistantState" class="muted" aria-live="polite"></p></section>
-<section class="card stack"><h2 class="section-title">مصادر المعرفة</h2><div id="sources" class="list" aria-live="polite"></div><input id="sourceName" placeholder="اسم المصدر"><select id="sourceKind"><option value="file">ملف</option><option value="url">رابط</option></select><button id="registerSource">تسجيل مصدر</button><input id="file" type="file" accept=".txt,.md,.markdown,.json,.docx,.pdf"><button id="upload" class="secondary">رفع الملف</button><button id="process" class="secondary">معالجة / إعادة معالجة</button><p class="muted">إعادة المعالجة تستخدم الملف المحفوظ ولا تتطلب رفعه مرة أخرى.</p><p id="sourceState" class="muted" aria-live="polite"></p></section></aside>
+<section class="card stack"><h2 class="section-title">مصادر المعرفة</h2><div id="sources" class="list" aria-live="polite"></div><input id="sourceName" placeholder="اسم المصدر"><select id="sourceKind"><option value="document">ملف</option><option value="structured">بيانات منظمة</option></select><button id="registerSource">تسجيل مصدر</button><input id="file" type="file" accept=".txt,.md,.markdown,.json,.docx,.pdf"><button id="upload" class="secondary">رفع الملف</button><button id="process" class="secondary">معالجة / إعادة معالجة</button><p class="muted">إعادة المعالجة تستخدم الملف المحفوظ ولا تتطلب رفعه مرة أخرى.</p><p id="sourceState" class="muted" aria-live="polite"></p></section></aside>
 <section class="stack"><section class="card"><h2 class="section-title">نطاق معرفة المساعد</h2><div id="scope" class="list"></div><p id="scopeState" class="muted" aria-live="polite"></p></section><section class="card chat"><div id="messages" class="messages" aria-live="polite"><p class="muted">أنشئ محادثة لطرح سؤال على مصادرك.</p></div><div class="row"><button id="conversation">محادثة جديدة</button><textarea id="question" rows="2" placeholder="اكتب سؤالك هنا…" aria-label="السؤال"></textarea><button id="ask">اسأل المساعد</button></div><div id="result" aria-live="polite"></div></section></section></main></div>
 <script>
 const $=id=>document.getElementById(id);let wid=localStorage.getItem('workspace_id')||'',aid='',sid='',cid='';$('workspace').value=wid;document.querySelector('.shell').insertAdjacentHTML('beforeend','<section class="card"><h2 class="section-title">التقييم والتشغيل</h2><div id="ops" class="muted" aria-live="polite">جارٍ تحميل الحالة…</div></section>');
-async function call(url,opts={}){const r=await fetch(url,opts);if(!r.ok)throw Error('request failed');return r.json()}
+async function call(url,opts={}){const r=await fetch(url,opts);if(!r.ok)throw Error('request failed');if(r.status===204)return null;return r.json()}
+let availableSources=[];
+async function loadScope(){if(!aid){$('scope').textContent='اختر مساعدًا لعرض نطاق المعرفة.';return}try{const attached=await call('/api/workspaces/'+wid+'/assistants/'+aid+'/sources');renderScope(attached)}catch(_){fail('scopeState')}}
+function renderScope(attached){const attachedIds=new Set(attached.map(s=>s.id));if(!availableSources.length){$('scope').textContent='لا توجد مصادر معرفة في مساحة العمل.';return}$('scope').replaceChildren(...availableSources.map(s=>{const d=document.createElement('div');d.className='item';const label=document.createElement('span');label.textContent=s.name+' ';d.append(label);const badge=document.createElement('span');badge.className='badge';badge.textContent=s.lifecycle;d.append(badge);const button=document.createElement('button');button.className='secondary';const isAttached=attachedIds.has(s.id);button.textContent=isAttached?'إزالة من نطاق المساعد':'إضافة إلى نطاق المساعد';button.onclick=async()=>{button.disabled=true;try{await call('/api/workspaces/'+wid+'/assistants/'+aid+'/sources/'+s.id,{method:isAttached?'DELETE':'POST'});await loadScope()}catch(_){fail('scopeState')}finally{button.disabled=false}};d.append(button);return d}))}
+const existingRenderSources=renderSources;
+renderSources=ss=>{availableSources=ss;existingRenderSources(ss);loadScope()};
+$('assistants').onchange=()=>{aid=$('assistants').value;loadScope()};
 function fail(el){$(el).textContent='تعذر إكمال الطلب حاليًا. حاول مرة أخرى.'}
 async function load(){wid=$('workspace').value.trim();if(!wid)return;try{const w=await call('/api/workspaces/'+wid);localStorage.setItem('workspace_id',wid);$('workspaceState').textContent='مساحة العمل: '+w.name;const as=await call('/api/workspaces/'+wid+'/assistants');$('assistants').replaceChildren(...as.map(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.name;return o}));aid=as[0]?.id||'';const ss=await call('/api/workspaces/'+wid+'/sources');renderSources(ss)}catch(_){fail('workspaceState')}}
 function renderSources(ss){$('sources').replaceChildren(...ss.map(s=>{const d=document.createElement('div');d.className='item';d.textContent=s.name+' ';const b=document.createElement('span');b.className='badge';b.textContent=s.lifecycle;d.append(b);d.onclick=()=>{sid=s.id;document.querySelectorAll('.item').forEach(x=>x.classList.remove('selected'));d.classList.add('selected')};return d}))}

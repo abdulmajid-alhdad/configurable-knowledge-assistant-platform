@@ -1,9 +1,9 @@
 {
   "key": "yemen_history",
-  "version": "1.0",
+  "version": "1.1",
   "name": "Yemen History Demo Reference",
   "cases": [
-    {"key": "arabic-grounded", "type": "reference_based", "query": "ما تاريخ اليمن؟", "expected_source_ids": [], "reference_answer": "evidence"},
-    {"key": "unsupported", "type": "deterministic", "query": "سؤال خارج المصدر", "expected_source_ids": []}
+    {"key": "arabic-grounded", "type": "reference_based", "query": "ما تاريخ اليمن؟", "expected_source_ids": [], "reference_answer": "evidence", "expected_outcome": "GroundedAnswer"},
+    {"key": "unsupported", "type": "deterministic", "query": "سؤال خارج المصدر", "expected_source_ids": [], "expected_outcome": "InsufficientEvidence"}
   ]
 }

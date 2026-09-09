@@ -7,7 +7,11 @@ from knowledge_platform.delivery.app import create_app
 
 
 def _page() -> str:
-    route = next(route for route in create_app().routes if getattr(route, "path", None) == "/app")
+    route = next(
+        route
+        for route in create_app().routes
+        if getattr(route, "path", None) == "/app/acceptance"
+    )
     return cast(Callable[[], str], route.endpoint)()
 
 
@@ -28,11 +32,27 @@ def test_product_page_uses_generic_management_and_conversation_contracts() -> No
         "/process",
         "/assistants/'+aid+'/conversations",
         "/conversations/'+cid+'/ask",
+        "/assistants/'+aid+'/sources",
+        "/assistants/'+aid+'/sources/'+s.id",
     ):
         assert endpoint in page
     assert "/api/demo/ask" not in page
     assert "source_ids" not in page
     assert "FormData" not in page
+
+
+def test_product_page_renders_and_updates_assistant_knowledge_scope() -> None:
+    page = _page()
+    assert "async function loadScope()" in page
+    assert "renderScope(attached)" in page
+    assert "$('assistants').onchange" in page
+    assert "availableSources" in page
+    assert "إضافة إلى نطاق المساعد" in page
+    assert "إزالة من نطاق المساعد" in page
+    assert "اختر مساعدًا لعرض نطاق المعرفة." in page
+    assert "لا توجد مصادر معرفة في مساحة العمل." in page
+    assert "method:isAttached?'DELETE':'POST'" in page
+    assert "body:" not in page[page.index("method:isAttached?"):page.index("method:isAttached?")+100]
 
 
 def test_product_page_upload_and_reprocess_are_distinct() -> None:
@@ -64,3 +84,13 @@ def test_product_page_only_persists_navigation_state() -> None:
     assert "DATABASE_URL" not in page
     assert "OPENROUTER" not in page
     assert "KNOWLEDGE_ARTIFACT_ROOT" not in page
+
+
+def test_product_page_maps_source_labels_to_backend_kinds() -> None:
+    page = _page()
+    assert '<option value="document">' in page
+    assert '<option value="structured">' in page
+    assert '<option value="file">' not in page
+    assert '<option value="url">' not in page
+    assert "'/api/workspaces/'+wid+'/sources'" in page
+    assert "kind:$('sourceKind').value" in page

@@ -6,6 +6,7 @@ from knowledge_platform.modules.evidence_grounding.domain.contracts import (
     GroundedAnswer,
     InsufficientEvidence,
 )
+from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
 from knowledge_platform.modules.knowledge_sources.domain.knowledge_source import KnowledgeSource
 from knowledge_platform.modules.knowledge_sources.domain.lifecycle import KnowledgeSourceKind
 from knowledge_platform.modules.workspace_assistant.domain.assistant import Assistant
@@ -14,6 +15,7 @@ from knowledge_platform.modules.workspace_assistant.domain.configuration import 
     RetrievalConfiguration,
 )
 from knowledge_platform.modules.workspace_assistant.domain.security import DataEgressPolicy
+from knowledge_platform.modules.workspace_assistant.domain.identifiers import WorkspaceId
 from knowledge_platform.modules.workspace_assistant.domain.workspace import Workspace
 from knowledge_platform.reference.yemen_history import (
     DEFINITION,
@@ -74,33 +76,27 @@ def test_reference_provisioner_uses_generic_boundaries() -> None:
             calls.append("artifact")
             return object()
 
-    class Ingestion:
-        def process(self, **kwargs: object) -> KnowledgeSource:
-            calls.append("ingestion")
+    class Processing:
+        def process(
+            self, *, workspace_id: WorkspaceId, source_id: KnowledgeSourceId,
+            embedding_profile: str,
+        ) -> KnowledgeSource:
+            assert workspace_id == workspace.id
+            assert source_id == source.id
+            assert embedding_profile == "reference"
+            calls.append("processing")
             return source
 
     class Scope:
         def attach(self, **kwargs: object) -> None:
             calls.append("scope")
 
-    class SourceRepository:
-        def save_transition(self, **kwargs: object) -> None:
-            pass
-
-    class RepresentationRepository:
-        def add(self, representation: object) -> None:
-            pass
-        def activate(self, **kwargs: object) -> None:
-            pass
-
     provisioner = YemenHistoryReferenceProvisioner(
         workspaces=Workspaces(), assistants=Assistants(), sources=Sources(),
-        artifacts=Artifacts(), ingestion=Ingestion(), scope=Scope(),
-        assistant_repository=object(), source_repository=SourceRepository(),
-        representation_repository=RepresentationRepository(),
+        artifacts=Artifacts(), processing=Processing(), scope=Scope(),
     )
     provisioner.provision()
-    assert calls == ["workspace", "assistant", "source", "artifact", "ingestion", "scope"]
+    assert calls == ["workspace", "assistant", "source", "artifact", "processing", "scope"]
 
 
 def test_yemen_reference_supported_question_returns_grounded_answer() -> None:

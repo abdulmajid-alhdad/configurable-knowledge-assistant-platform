@@ -3,7 +3,10 @@
 from typing import Protocol
 
 from knowledge_platform.application.document_rag import DocumentRagService
-from knowledge_platform.modules.conversation.domain.conversation import Conversation
+from knowledge_platform.modules.conversation.domain.conversation import (
+    Conversation,
+    ConversationStatus,
+)
 from knowledge_platform.modules.conversation.domain.identifiers import ConversationId
 from knowledge_platform.modules.evidence_grounding.domain.contracts import GroundingOutcome
 from knowledge_platform.modules.knowledge_sources.domain.identifiers import KnowledgeSourceId
@@ -36,6 +39,21 @@ class ConversationRepositoryPort(Protocol):
     def get(
         self, *, conversation_id: ConversationId, workspace_id: WorkspaceId
     ) -> Conversation | None: ...
+    def list_for_workspace(
+        self, *, workspace_id: WorkspaceId,
+        assistant_id: AssistantId | None = None,
+        status: ConversationStatus | None = ConversationStatus.ACTIVE,
+    ) -> list[Conversation]: ...
+    def rename(
+        self, *, conversation_id: ConversationId, workspace_id: WorkspaceId, title: str
+    ) -> Conversation | None: ...
+    def set_archived(
+        self,
+        *,
+        conversation_id: ConversationId,
+        workspace_id: WorkspaceId,
+        archived: bool,
+    ) -> Conversation | None: ...
 
 
 class MessageRepositoryPort(Protocol):
@@ -51,11 +69,17 @@ class AssistantConversationService:
         self._assistants, self._sources, self._associations = assistants, sources, associations
         self._conversations, self._messages, self._rag = conversations, messages, rag
 
-    def create(self, *, workspace_id: WorkspaceId, assistant_id: AssistantId) -> Conversation:
+    def create(
+        self,
+        *,
+        workspace_id: WorkspaceId,
+        assistant_id: AssistantId,
+        title: str = "Untitled conversation",
+    ) -> Conversation:
         if self._assistants.get(assistant_id=assistant_id, workspace_id=workspace_id) is None:
             raise LookupError("assistant not found")
         conversation = Conversation.create_for_assistant(
-            workspace_id=workspace_id, assistant_id=assistant_id
+            workspace_id=workspace_id, assistant_id=assistant_id, title=title
         )
         self._conversations.add(
             conversation, workspace_id=workspace_id
@@ -67,6 +91,51 @@ class AssistantConversationService:
     ) -> Conversation | None:
         return self._conversations.get(conversation_id=conversation_id, workspace_id=workspace_id)
 
+    def list(
+        self, *, workspace_id: WorkspaceId,
+        assistant_id: AssistantId | None = None,
+        status: ConversationStatus | None = ConversationStatus.ACTIVE,
+    ) -> list[Conversation]:
+        if assistant_id is not None and self._assistants.get(
+            assistant_id=assistant_id, workspace_id=workspace_id
+        ) is None:
+            raise LookupError("assistant not found")
+        return self._conversations.list_for_workspace(
+            workspace_id=workspace_id, assistant_id=assistant_id, status=status
+        )
+
+    def rename(
+        self,
+        *,
+        workspace_id: WorkspaceId,
+        conversation_id: ConversationId,
+        title: str,
+    ) -> Conversation:
+        renamed = self._conversations.rename(
+            conversation_id=conversation_id,
+            workspace_id=workspace_id,
+            title=title,
+        )
+        if renamed is None:
+            raise LookupError("conversation not found")
+        return renamed
+
+    def set_archived(
+        self,
+        *,
+        workspace_id: WorkspaceId,
+        conversation_id: ConversationId,
+        archived: bool,
+    ) -> Conversation:
+        changed = self._conversations.set_archived(
+            conversation_id=conversation_id,
+            workspace_id=workspace_id,
+            archived=archived,
+        )
+        if changed is None:
+            raise LookupError("conversation not found")
+        return changed
+
     def ask(self, *, workspace_id: WorkspaceId, conversation_id: ConversationId,
             question: str) -> GroundingOutcome:
         conversation = self.get(
@@ -74,6 +143,8 @@ class AssistantConversationService:
         )
         if conversation is None:
             raise LookupError("conversation not found")
+        if conversation.status is ConversationStatus.ARCHIVED:
+            raise ValueError("archived conversation is read-only")
         assistant = self._assistants.get(
             assistant_id=conversation.assistant_id, workspace_id=workspace_id
         )
@@ -89,5 +160,6 @@ class AssistantConversationService:
         return self._rag.ask_in_conversation(
             conversation=conversation, workspace_id=workspace_id,
             assistant_id=assistant.id, question=question, source_ids=eligible,
+            assistant_instructions=assistant.instructions,
             conversation_repository=self._conversations, message_repository=self._messages,
         )

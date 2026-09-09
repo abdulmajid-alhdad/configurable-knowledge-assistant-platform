@@ -87,7 +87,15 @@ def test_context_rejects_invalid_limits(limit: object) -> None:
         conversation().context(max_messages=cast(int, limit))
 
 
-def test_conversation_shape_excludes_unapproved_state() -> None:
+def test_conversation_shape_includes_only_approved_lifecycle_state() -> None:
     assert {field.name for field in fields(Conversation)} == {
-        "id", "workspace_id", "assistant_id", "messages"
+        "id",
+        "workspace_id",
+        "assistant_id",
+        "title",
+        "status",
+        "messages",
+        "created_at",
+        "updated_at",
+        "archived_at",
     }

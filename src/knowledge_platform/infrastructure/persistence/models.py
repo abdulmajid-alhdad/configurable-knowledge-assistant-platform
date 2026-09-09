@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pgvector.sqlalchemy import VECTOR
-from sqlalchemy import CheckConstraint, ForeignKey, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -21,11 +22,25 @@ class WorkspaceRecord(PlatformBase):
     __tablename__ = "workspaces"
     __table_args__ = (
         CheckConstraint("btrim(name) <> ''", name="workspaces_name_nonblank"),
+        CheckConstraint(
+            "operational_status IN ('ACTIVE', 'SUSPENDED')",
+            name="workspaces_operational_status_vocabulary",
+        ),
+        CheckConstraint(
+            "operational_status <> 'SUSPENDED' OR NOT ai_execution_enabled",
+            name="workspaces_suspended_disables_ai",
+        ),
         {"schema": "platform"},
     )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    operational_status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="ACTIVE"
+    )
+    ai_execution_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
 
 
 class AssistantRecord(PlatformBase):
@@ -103,7 +118,19 @@ class ConversationRecord(PlatformBase):
     """ORM record for ``platform.conversations``."""
 
     __tablename__ = "conversations"
-    __table_args__ = ({"schema": "platform"},)
+    __table_args__ = (
+        CheckConstraint("btrim(title) <> ''", name="conversations_title_nonblank"),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'ARCHIVED')",
+            name="conversations_status_vocabulary",
+        ),
+        CheckConstraint(
+            "(status = 'ACTIVE' AND archived_at IS NULL) OR "
+            "(status = 'ARCHIVED' AND archived_at IS NOT NULL)",
+            name="conversations_archive_state_consistent",
+        ),
+        {"schema": "platform"},
+    )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
     workspace_id: Mapped[UUID] = mapped_column(
@@ -111,6 +138,17 @@ class ConversationRecord(PlatformBase):
     )
     assistant_id: Mapped[UUID] = mapped_column(
         PostgreSQLUUID(as_uuid=True), ForeignKey("platform.assistants.id"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="ACTIVE")
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 
@@ -122,6 +160,15 @@ class MessageRecord(PlatformBase):
         CheckConstraint("sequence >= 0", name="messages_sequence_nonnegative"),
         CheckConstraint("role IN ('user', 'assistant')", name="messages_role_vocabulary"),
         CheckConstraint("btrim(content) <> ''", name="messages_content_nonblank"),
+        CheckConstraint(
+            "outcome IS NULL OR outcome IN "
+            "('grounded', 'insufficient_evidence', 'policy_denied', 'technical_failure')",
+            name="messages_outcome_vocabulary",
+        ),
+        CheckConstraint(
+            "outcome IS NULL OR role = 'assistant'",
+            name="messages_assistant_outcome_only",
+        ),
         {"schema": "platform"},
     )
 
@@ -133,6 +180,93 @@ class MessageRecord(PlatformBase):
     sequence: Mapped[int] = mapped_column(primary_key=True)
     role: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class MessageEvidenceRecord(PlatformBase):
+    """Ordered evidence snapshot cited by one persisted assistant message."""
+
+    __tablename__ = "message_evidence"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["conversation_id", "message_sequence"],
+            ["platform.messages.conversation_id", "platform.messages.sequence"],
+        ),
+        CheckConstraint("ordinal > 0", name="message_evidence_ordinal_positive"),
+        CheckConstraint("btrim(content) <> ''", name="message_evidence_content_nonblank"),
+        CheckConstraint(
+            "btrim(provenance_locator) <> ''",
+            name="message_evidence_provenance_nonblank",
+        ),
+        {"schema": "platform"},
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), primary_key=True
+    )
+    message_sequence: Mapped[int] = mapped_column(primary_key=True)
+    ordinal: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("platform.knowledge_sources.id"),
+        nullable=False,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    provenance_locator: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class SystemConversationRecord(PlatformBase):
+    """System-scoped administrative conversation; never a Workspace row."""
+
+    __tablename__ = "system_conversations"
+    __table_args__ = (
+        CheckConstraint("btrim(title) <> ''", name="system_conversations_title_nonblank"),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'ARCHIVED')",
+            name="system_conversations_status_vocabulary",
+        ),
+        {"schema": "platform"},
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="ACTIVE")
+    created_by: Mapped[UUID | None] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class SystemConversationMessageRecord(PlatformBase):
+    """Append-only message belonging to a System conversation."""
+
+    __tablename__ = "system_conversation_messages"
+    __table_args__ = (
+        CheckConstraint(
+            "sequence >= 0", name="system_conversation_messages_sequence_nonnegative"
+        ),
+        CheckConstraint(
+            "role IN ('user', 'assistant')",
+            name="system_conversation_messages_role_vocabulary",
+        ),
+        CheckConstraint(
+            "btrim(content) <> ''",
+            name="system_conversation_messages_content_nonblank",
+        ),
+        {"schema": "platform"},
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("platform.system_conversations.id"),
+        primary_key=True,
+    )
+    sequence: Mapped[int] = mapped_column(primary_key=True)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class DocumentRepresentationRecord(PlatformBase):

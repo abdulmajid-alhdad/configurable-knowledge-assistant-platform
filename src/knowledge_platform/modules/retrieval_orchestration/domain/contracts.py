@@ -98,6 +98,7 @@ class RetrievedContent:
     source_id: KnowledgeSourceId
     content: str
     provenance_locator: str
+    distance: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.source_id, KnowledgeSourceId):
@@ -108,6 +109,8 @@ class RetrievedContent:
             "provenance_locator",
             _required_text(self.provenance_locator, field="provenance_locator"),
         )
+        if self.distance is not None and not isinstance(self.distance, (int, float)):
+            raise TypeError("distance must be numeric when provided")
 
 
 @dataclass(frozen=True, slots=True)
