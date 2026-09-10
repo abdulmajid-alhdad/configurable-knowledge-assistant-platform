@@ -495,7 +495,11 @@ def test_system_conversation_frontend_is_bound_chat_without_delete_or_direct_pro
     assert "if (legacy) {" in detail_renderer
     assert "detailContent.push(errorState(" in detail_renderer
     assert "detailContent.push(messages);" in detail_renderer
-    assert 'if (!legacy && value.status === "ACTIVE" && can("system_conversations.create")) {' in detail_renderer
+    assert (
+        'if (!legacy && value.status === "ACTIVE" '
+        '&& can("system_conversations.create")) {'
+        in detail_renderer
+    )
     assert "detailContent.push(systemConversationComposer(value, open));" in detail_renderer
     assert "appendContent(detail, detailContent);" in section
     assert 'method: "DELETE"' not in section
