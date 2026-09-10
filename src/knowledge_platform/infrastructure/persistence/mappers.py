@@ -44,6 +44,7 @@ from .models import (
     KnowledgeSourceRecord,
     MessageEvidenceRecord,
     MessageRecord,
+    SystemConversationMessageEvidenceRecord,
     SystemConversationMessageRecord,
     SystemConversationRecord,
     WorkspaceRecord,
@@ -204,6 +205,12 @@ def system_conversation_to_record(
 ) -> SystemConversationRecord:
     return SystemConversationRecord(
         id=conversation.id,
+        workspace_id=(
+            conversation.workspace_id.value if conversation.workspace_id is not None else None
+        ),
+        assistant_id=(
+            conversation.assistant_id.value if conversation.assistant_id is not None else None
+        ),
         title=conversation.title,
         status=conversation.status.value,
         created_by=conversation.created_by,
@@ -222,24 +229,64 @@ def system_message_to_record(
         role=message.role.value,
         content=message.content,
         created_at=message.created_at,
+        outcome=message.outcome.value if message.outcome is not None else None,
     )
+
+
+def system_message_evidence_to_records(
+    conversation_id: UUID, message: SystemMessage,
+) -> list[SystemConversationMessageEvidenceRecord]:
+    return [
+        SystemConversationMessageEvidenceRecord(
+            conversation_id=conversation_id,
+            message_sequence=message.sequence,
+            ordinal=ordinal,
+            source_id=item.source_id.value,
+            content=item.content,
+            provenance_locator=item.provenance_locator,
+        )
+        for ordinal, item in enumerate(message.evidence, start=1)
+    ]
 
 
 def system_conversation_from_records(
     record: SystemConversationRecord,
     messages: list[SystemConversationMessageRecord],
+    evidence: list[SystemConversationMessageEvidenceRecord] | None = None,
 ) -> SystemConversation:
+    grouped: dict[int, list[SystemConversationMessageEvidenceRecord]] = {}
+    for item in evidence or []:
+        grouped.setdefault(item.message_sequence, []).append(item)
     return SystemConversation(
         id=record.id,
         title=record.title,
         status=SystemConversationStatus(record.status),
         created_by=record.created_by,
+        workspace_id=(
+            WorkspaceId(record.workspace_id) if record.workspace_id is not None else None
+        ),
+        assistant_id=(
+            AssistantId(record.assistant_id) if record.assistant_id is not None else None
+        ),
         messages=tuple(
             SystemMessage(
                 sequence=message.sequence,
                 role=MessageRole(message.role),
                 content=message.content,
                 created_at=message.created_at,
+                outcome=(
+                    MessageOutcome(message.outcome) if message.outcome is not None else None
+                ),
+                evidence=tuple(
+                    MessageEvidence(
+                        source_id=KnowledgeSourceId(item.source_id),
+                        content=item.content,
+                        provenance_locator=item.provenance_locator,
+                    )
+                    for item in sorted(
+                        grouped.get(message.sequence, []), key=lambda item: item.ordinal
+                    )
+                ),
             )
             for message in sorted(messages, key=lambda value: value.sequence)
         ),

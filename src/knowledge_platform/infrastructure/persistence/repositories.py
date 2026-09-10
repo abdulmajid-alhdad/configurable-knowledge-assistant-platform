@@ -35,6 +35,7 @@ from .mappers import (
     message_to_record,
     system_conversation_from_records,
     system_conversation_to_record,
+    system_message_evidence_to_records,
     system_message_to_record,
     workspace_from_record,
     workspace_to_record,
@@ -46,6 +47,7 @@ from .models import (
     KnowledgeSourceRecord,
     MessageEvidenceRecord,
     MessageRecord,
+    SystemConversationMessageEvidenceRecord,
     SystemConversationMessageRecord,
     SystemConversationRecord,
     WorkspaceRecord,
@@ -429,7 +431,32 @@ class SystemConversationRepository:
                 .order_by(SystemConversationMessageRecord.sequence)
             )
         )
-        return system_conversation_from_records(record, messages)
+        evidence = list(
+            self._session.scalars(
+                select(SystemConversationMessageEvidenceRecord)
+                .where(
+                    SystemConversationMessageEvidenceRecord.conversation_id
+                    == conversation_id
+                )
+                .order_by(
+                    SystemConversationMessageEvidenceRecord.message_sequence,
+                    SystemConversationMessageEvidenceRecord.ordinal,
+                )
+            )
+        )
+        return system_conversation_from_records(record, messages, evidence)
+
+    def get_for_update(self, conversation_id: UUID) -> SystemConversation | None:
+        locked = self._session.scalar(
+            text(
+                "select platform.lock_system_conversation_for_execution("
+                ":conversation_id)"
+            ),
+            {"conversation_id": conversation_id},
+        )
+        if locked is not True:
+            return None
+        return self.get(conversation_id)
 
     def list(
         self, *, status: SystemConversationStatus | None = SystemConversationStatus.ACTIVE
@@ -473,6 +500,9 @@ class SystemConversationRepository:
     def add_message(self, conversation: SystemConversation) -> None:
         if not conversation.messages:
             raise ValueError("system conversation has no message to append")
-        self._session.add(
-            system_message_to_record(conversation.id, conversation.messages[-1])
-        )
+        message = conversation.messages[-1]
+        self._session.add(system_message_to_record(conversation.id, message))
+        evidence = system_message_evidence_to_records(conversation.id, message)
+        if evidence:
+            self._session.flush()
+            self._session.add_all(evidence)

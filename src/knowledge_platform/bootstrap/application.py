@@ -195,6 +195,8 @@ class ApplicationRuntime:
         return SqlAlchemySystemConversationControl(
             self.session_factory,
             self.access_control(),
+            self.workspace_operational_state(),
+            self.rag_service,
         )
 
     def workspace_operational_state(self) -> WorkspaceOperationalStateService:
@@ -750,9 +752,15 @@ class ApplicationRuntime:
     def system_conversation_service(
         self, session: Session
     ) -> SystemConversationService:
+        repos = self.repositories(session)
         return SystemConversationService(
             access=self.access_control(),
-            repository=self.repositories(session).system_conversation,
+            repository=repos.system_conversation,
+            workspaces=repos.workspace,
+            assistants=repos.assistant,
+            sources=repos.knowledge_source,
+            associations=repos.assistant_sources,
+            rag=self.rag_service(session),
         )
 
     def embedding_gateway(self) -> RemoteEmbeddingAdapter:

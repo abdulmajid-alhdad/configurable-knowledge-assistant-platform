@@ -1,6 +1,6 @@
 import { ApiError, getJSON, request } from "/assets/shared/api.js";
 import { workspaceCache, workspaceKey } from "/assets/shared/cache.js";
-import { el } from "/assets/shared/dom.js";
+import { appendContent, el } from "/assets/shared/dom.js";
 import {
   drawer,
   emptyState,
@@ -705,24 +705,89 @@ export function credentialsPage() {
   return host;
 }
 
-function systemConversationForm(item, onSaved) {
+function conversationOutcomeLabel(outcome) {
+  return {
+    GroundedAnswer: "إجابة مدعّمة بالأدلة",
+    InsufficientEvidence: "لا توجد أدلة كافية",
+    PolicyDenied: "منعته سياسة الحماية",
+    TechnicalFailure: "تعذر إكمال المعالجة",
+  }[outcome] || null;
+}
+
+async function systemAssistantCatalogue(workspaces, conversationItems = []) {
+  const workspaceIds = new Set([
+    ...conversationItems.map((item) => item.workspace_id).filter(Boolean),
+  ]);
+  const entries = await Promise.all([...workspaceIds].map(async (workspaceId) => [
+    workspaceId,
+    await getJSON(`/api/system/workspaces/${workspaceId}/assistants`),
+  ]));
+  return { workspaces, assistants: new Map(entries) };
+}
+
+function systemConversationForm(item, catalogue, onSaved) {
   const title = el("input", { required: "required", maxlength: "200", value: item?.title || "" });
+  const workspace = el("select", { required: "required", disabled: item ? "disabled" : null },
+    el("option", { value: "" }, "اختر مساحة العمل"),
+    ...catalogue.workspaces.map((value) => el("option", { value: value.id }, value.name)),
+  );
+  const assistant = el("select", { required: "required", disabled: "disabled" }, el("option", { value: "" }, "اختر مساعدًا"));
   const feedback = el("div", { className: "form-feedback" });
-  const form = el("form", { className: "source-create-form" }, field("عنوان المحادثة", title), feedback);
+  const loadAssistants = async (workspaceId, selectedId = null) => {
+    assistant.disabled = true;
+    assistant.replaceChildren(el("option", { value: "" }, "جاري تحميل المساعدين…"));
+    try {
+      const assistants = catalogue.assistants.get(workspaceId)
+        || await getJSON(`/api/system/workspaces/${workspaceId}/assistants`);
+      catalogue.assistants.set(workspaceId, assistants);
+      assistant.replaceChildren(
+        el("option", { value: "" }, "اختر مساعدًا"),
+        ...assistants.map((value) => el("option", { value: value.id }, value.name)),
+      );
+      assistant.value = selectedId || "";
+      assistant.disabled = false;
+    } catch (error) {
+      assistant.replaceChildren(el("option", { value: "" }, "تعذر تحميل المساعدين"));
+      feedback.replaceChildren(apiError(error, "تعذر تحميل المساعدين."));
+    }
+  };
+  if (item) {
+    workspace.value = item.workspace_id || "";
+    if (item.workspace_id) loadAssistants(item.workspace_id, item.assistant_id);
+  } else {
+    workspace.addEventListener("change", () => {
+      feedback.replaceChildren();
+      if (workspace.value) loadAssistants(workspace.value);
+      else {
+        assistant.disabled = true;
+        assistant.replaceChildren(el("option", { value: "" }, "اختر مساعدًا"));
+      }
+    });
+  }
+  const form = el("form", { className: "source-create-form" },
+    item ? null : field("مساحة العمل", workspace),
+    item ? null : field("المساعد", assistant),
+    field("عنوان المحادثة", title),
+    feedback,
+  );
   const save = action(item ? "حفظ العنوان" : "إنشاء المحادثة", async () => {
-    if (!title.value.trim()) return;
+    if (!title.value.trim() || (!item && (!workspace.value || !assistant.value))) return;
     save.disabled = true;
     try {
       const value = item
         ? await jsonRequest(`/api/system/conversations/${item.id}/title`, "PATCH", { title: title.value.trim() })
-        : await jsonRequest("/api/system/conversations", "POST", { title: title.value.trim() });
+        : await jsonRequest("/api/system/conversations", "POST", {
+          workspace_id: workspace.value,
+          assistant_id: assistant.value,
+          title: title.value.trim(),
+        });
       invalidate("system-conversations:ACTIVE", "system-conversations:ARCHIVED", "system-conversations:ALL", `system-conversation:${value.id}`);
       notify(item ? "تمت إعادة تسمية المحادثة." : "تم إنشاء محادثة النظام.");
       modal.close();
       onSaved(value);
     } catch (error) {
       save.disabled = false;
-      feedback.replaceChildren(apiError(error));
+      feedback.replaceChildren(apiError(error, "تعذر حفظ المحادثة."));
     }
   });
   form.addEventListener("submit", (event) => { event.preventDefault(); save.click(); });
@@ -734,12 +799,44 @@ function systemConversationForm(item, onSaved) {
 function systemMessage(message) {
   const role = String(message.role || "").toLowerCase();
   const roleLabel = role === "user" ? "المستخدم" : role === "assistant" ? "المساعد" : "النظام";
+  const outcome = conversationOutcomeLabel(message.outcome);
   return el(
     "article",
     { className: `message ${role}` },
-    el("div", { className: "message-head" }, el("span", { className: "message-role" }, roleLabel), el("time", { className: "secondary-meta" }, formatDate(message.created_at))),
+    el("div", { className: "message-head" },
+      el("span", { className: "message-role" }, roleLabel),
+      outcome ? el("span", { className: "secondary-meta" }, outcome) : null,
+      el("time", { className: "secondary-meta" }, formatDate(message.created_at)),
+    ),
     el("p", { className: "message-content", dir: "auto" }, message.content),
+    Array.isArray(message.evidence) && message.evidence.length ? el("div", { className: "message-evidence" },
+      ...message.evidence.map((item, index) => el("article", { className: "evidence" },
+        el("strong", {}, `دليل ${index + 1}`),
+        el("p", { dir: "auto" }, item.content),
+        el("span", { className: "secondary-meta technical-code", dir: "ltr" }, item.provenance_locator),
+      )),
+    ) : null,
   );
+}
+
+function systemConversationComposer(value, open) {
+  const question = el("textarea", { rows: "3", required: "required", placeholder: "اكتب سؤالًا للمساعد…", "aria-label": "السؤال" });
+  const feedback = el("div", { className: "form-feedback" });
+  const send = action("إرسال", async () => {
+    if (!question.value.trim()) return;
+    send.disabled = true;
+    try {
+      await jsonRequest(`/api/system/conversations/${value.id}/ask`, "POST", { question: question.value.trim() });
+      invalidate(`system-conversation:${value.id}`, "system-conversations:ACTIVE", "system-conversations:ALL");
+      open(value);
+    } catch (error) {
+      feedback.replaceChildren(apiError(error, "تعذر إرسال السؤال."));
+      send.disabled = false;
+    }
+  });
+  const form = el("form", { className: "conversation-composer" }, field("رسالتك", question), feedback, el("div", { className: "form-actions" }, send));
+  form.addEventListener("submit", (event) => { event.preventDefault(); send.click(); });
+  return form;
 }
 
 export function systemConversationsPage() {
@@ -748,7 +845,14 @@ export function systemConversationsPage() {
   let status = "ACTIVE";
   const render = () => {
     const resource = `system-conversations:${status}`;
-    load(resource, () => getJSON(`/api/system/conversations?status=${status}`), host, (items) => {
+    load(resource, async () => {
+      const items = await getJSON(`/api/system/conversations?status=${status}`);
+      return { items, ...await systemAssistantCatalogue(await systemWorkspaces(), items) };
+    }, host, (data) => {
+      const { items, workspaces, assistants } = data;
+      const catalogue = { workspaces, assistants };
+      const workspaceName = (workspaceId) => workspaces.find((item) => item.id === workspaceId)?.name || "غير متاح";
+      const assistantName = (workspaceId, assistantId) => (assistants.get(workspaceId) || []).find((item) => item.id === assistantId)?.name || "غير متاح";
       if (selectedId && !items.some((item) => item.id === selectedId)) selectedId = null;
       selectedId = selectedId || items[0]?.id || null;
       const list = el("div", { className: "conversation-list" });
@@ -759,7 +863,7 @@ export function systemConversationsPage() {
         detail.replaceChildren(loadingState("جاري تحميل المحادثة…"));
         load(`system-conversation:${item.id}`, () => getJSON(`/api/system/conversations/${item.id}`), detail, (value) => {
           const actions = el("div", { className: "inline-actions" });
-          if (can("system_conversations.rename")) actions.append(action("إعادة تسمية", () => systemConversationForm(value, () => render()), "button secondary small"));
+          if (can("system_conversations.rename")) actions.append(action("إعادة تسمية", () => systemConversationForm(value, catalogue, () => render()), "button secondary small"));
           if (can("system_conversations.archive")) {
             const archived = value.status === "ARCHIVED";
             actions.append(action(archived ? "استعادة" : "أرشفة", async () => {
@@ -770,27 +874,46 @@ export function systemConversationsPage() {
                 selectedId = null;
                 render();
               } catch (error) {
-                detail.append(apiError(error));
+                detail.append(apiError(error, "تعذر تغيير حالة المحادثة."));
               }
             }, "button secondary small"));
           }
-          detail.replaceChildren(
+          const legacy = !value.workspace_id || !value.assistant_id;
+          const detailContent = [
             el("header", { className: "conversation-head" }, el("div", {}, el("h2", {}, value.title), el("div", { className: "inline-actions" }, knownStatus(value.status), el("span", { className: "secondary-meta" }, `آخر تحديث: ${formatDate(value.updated_at)}`))), actions),
-            el("dl", { className: "info-grid" }, info("أنشأها", value.created_by || "غير متاح", true), info("تاريخ الإنشاء", formatDate(value.created_at))),
-            value.messages?.length ? el("div", { className: "messages" }, ...value.messages.map(systemMessage)) : emptyState("لا توجد رسائل", "هذه المحادثة الإدارية لا تحتوي رسائل محفوظة."),
-          );
+            el("dl", { className: "info-grid" },
+              info("مساحة العمل", legacy ? "غير مرتبطة" : workspaceName(value.workspace_id)),
+              info("المساعد", legacy ? "غير مرتبط" : assistantName(value.workspace_id, value.assistant_id)),
+              info("تاريخ الإنشاء", formatDate(value.created_at)),
+            ),
+          ];
+          if (legacy) {
+            detailContent.push(errorState("محادثة قديمة غير مرتبطة بمساحة عمل ومساعد", "تبقى المحادثة قابلة للقراءة، لكنها غير متاحة لتنفيذ الذكاء الاصطناعي."));
+          }
+          const messages = value.messages?.length ? el("div", { className: "messages" }, ...value.messages.map(systemMessage)) : emptyState("لا توجد رسائل", "هذه المحادثة الإدارية لا تحتوي رسائل محفوظة.");
+          detailContent.push(messages);
+          if (!legacy && value.status === "ACTIVE" && can("system_conversations.create")) {
+            detailContent.push(systemConversationComposer(value, open));
+          }
+          detail.replaceChildren();
+          appendContent(detail, detailContent);
         });
       };
       items.forEach((item) => {
-        const row = el("button", { type: "button", className: `conversation-row ${item.id === selectedId ? "active" : ""}`, dataset: { id: item.id }, onclick: () => open(item) }, el("div", { className: "conversation-row-head" }, el("strong", {}, item.title), knownStatus(item.status)), el("span", { className: "conversation-row-meta" }, formatDate(item.updated_at)));
+        const legacy = !item.workspace_id || !item.assistant_id;
+        const row = el("button", { type: "button", className: `conversation-row ${item.id === selectedId ? "active" : ""}`, dataset: { id: item.id }, onclick: () => open(item) },
+          el("div", { className: "conversation-row-head" }, el("strong", {}, item.title), knownStatus(item.status)),
+          el("span", { className: "conversation-row-meta" }, legacy ? "محادثة قديمة غير مرتبطة" : `${workspaceName(item.workspace_id)} · ${assistantName(item.workspace_id, item.assistant_id)}`),
+          el("span", { className: "conversation-row-meta" }, formatDate(item.updated_at)),
+        );
         list.append(row);
       });
       if (!items.length) list.append(emptyState("لا توجد محادثات نظام", status === "ARCHIVED" ? "لا توجد محادثات مؤرشفة." : "أنشئ محادثة إدارية عند الحاجة."));
       const filter = el("select", { onchange: () => { status = filter.value; selectedId = null; render(); }, "aria-label": "حالة المحادثات" }, el("option", { value: "ACTIVE" }, "النشطة"), el("option", { value: "ARCHIVED" }, "المؤرشفة"), el("option", { value: "ALL" }, "الكل"));
       filter.value = status;
-      const create = can("system_conversations.create") ? action("محادثة نظام جديدة", () => systemConversationForm(null, (value) => { status = "ACTIVE"; selectedId = value.id; render(); })) : null;
+      const create = can("system_conversations.create") ? action("محادثة نظام جديدة", () => systemConversationForm(null, catalogue, (value) => { status = "ACTIVE"; selectedId = value.id; render(); })) : null;
       host.replaceChildren(
-        pageHeader("المحادثات", "محادثات إدارية ضمن نطاق النظام، منفصلة عن محادثات مساحات العمل.", create),
+        pageHeader("المحادثات", "محادثات إدارية مدعّمة بالأدلة ضمن نطاق النظام، ومنفصلة عن محادثات مساحات العمل.", create),
         panel("التصفية", field("الحالة", filter)),
         el("div", { className: "conversation-layout system-conversation-layout" }, list, detail),
       );

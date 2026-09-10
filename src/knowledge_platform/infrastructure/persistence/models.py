@@ -220,15 +220,31 @@ class SystemConversationRecord(PlatformBase):
 
     __tablename__ = "system_conversations"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["assistant_id", "workspace_id"],
+            ["platform.assistants.id", "platform.assistants.workspace_id"],
+        ),
         CheckConstraint("btrim(title) <> ''", name="system_conversations_title_nonblank"),
         CheckConstraint(
             "status IN ('ACTIVE', 'ARCHIVED')",
             name="system_conversations_status_vocabulary",
         ),
+        CheckConstraint(
+            "(workspace_id IS NULL) = (assistant_id IS NULL)",
+            name="system_conversations_binding_complete_or_legacy",
+        ),
         {"schema": "platform"},
     )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    workspace_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("platform.workspaces.id"),
+        nullable=True,
+    )
+    assistant_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), nullable=True
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="ACTIVE")
     created_by: Mapped[UUID | None] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=True)
@@ -267,6 +283,48 @@ class SystemConversationMessageRecord(PlatformBase):
     role: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SystemConversationMessageEvidenceRecord(PlatformBase):
+    """Ordered evidence snapshot cited by a SYSTEM assistant message."""
+
+    __tablename__ = "system_conversation_message_evidence"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["conversation_id", "message_sequence"],
+            [
+                "platform.system_conversation_messages.conversation_id",
+                "platform.system_conversation_messages.sequence",
+            ],
+        ),
+        CheckConstraint(
+            "ordinal > 0",
+            name="system_conversation_message_evidence_ordinal_positive",
+        ),
+        CheckConstraint(
+            "btrim(content) <> ''",
+            name="system_conversation_message_evidence_content_nonblank",
+        ),
+        CheckConstraint(
+            "btrim(provenance_locator) <> ''",
+            name="system_conversation_message_evidence_provenance_nonblank",
+        ),
+        {"schema": "platform"},
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), primary_key=True
+    )
+    message_sequence: Mapped[int] = mapped_column(primary_key=True)
+    ordinal: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("platform.knowledge_sources.id"),
+        nullable=False,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    provenance_locator: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class DocumentRepresentationRecord(PlatformBase):

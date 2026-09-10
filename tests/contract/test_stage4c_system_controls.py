@@ -154,9 +154,13 @@ def test_system_conversations_are_separate_system_scope_and_have_no_delete() -> 
     )
     pages = read("frontend/system/controls-pages.js")
     assert 'prefix="/api/system/conversations"' in delivery
-    assert "workspace_id" not in delivery
+    assert '"/{conversation_id}/ask"' in delivery
+    assert "workspace_id" in delivery
     assert "Permission.SYSTEM_CONVERSATIONS_READ" in service
-    assert "created_by`` never filters visibility" in service
+    assert "Permission.SYSTEM_ASSISTANTS_READ" in service
+    assert "Permission.SYSTEM_KNOWLEDGE_READ" in service
+    visibility = service.split("def get", 1)[1].split("def rename", 1)[0]
+    assert "created_by" not in visibility
     assert "system_session_scope" in persistence
     assert '@router.delete(' not in delivery
     section = pages.split("export function systemConversationsPage", 1)[1].split(

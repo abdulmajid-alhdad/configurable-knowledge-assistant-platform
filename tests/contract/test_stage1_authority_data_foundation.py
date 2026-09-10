@@ -420,7 +420,12 @@ def test_workspace_conversation_lifecycle_is_non_destructive() -> None:
 
 def test_system_conversation_is_a_distinct_shared_system_aggregate() -> None:
     creator = uuid4()
-    conversation = SystemConversation.create(title="System", created_by=creator)
+    conversation = SystemConversation.create(
+        title="System",
+        created_by=creator,
+        workspace_id=WorkspaceId(uuid4()),
+        assistant_id=AssistantId(uuid4()),
+    )
     assert conversation.created_by == creator
     assert conversation.archive().status is SystemConversationStatus.ARCHIVED
     models = source(ROOT / "src/knowledge_platform/infrastructure/persistence/models.py")
@@ -428,7 +433,7 @@ def test_system_conversation_is_a_distinct_shared_system_aggregate() -> None:
     system_model = models.split("class SystemConversationRecord", 1)[1].split(
         "class DocumentRepresentationRecord", 1
     )[0]
-    assert "workspace_id" not in system_model
+    assert "workspace_id" in system_model
     sql = source(MIGRATION)
     visibility = sql.split("create policy system_conversations_runtime_select", 1)[1].split(
         "create policy system_conversations_runtime_insert", 1
@@ -439,7 +444,12 @@ def test_system_conversation_is_a_distinct_shared_system_aggregate() -> None:
 
 def test_system_conversation_service_does_not_use_creator_as_visibility_scope() -> None:
     creator, reader = uuid4(), uuid4()
-    conversation = SystemConversation.create(title="System", created_by=creator)
+    conversation = SystemConversation.create(
+        title="System",
+        created_by=creator,
+        workspace_id=WorkspaceId(uuid4()),
+        assistant_id=AssistantId(uuid4()),
+    )
 
     class Access:
         calls: list[tuple[object, object]] = []
@@ -451,10 +461,26 @@ def test_system_conversation_service_does_not_use_creator_as_visibility_scope() 
         def get(self, conversation_id: object) -> SystemConversation | None:
             return conversation if conversation_id == conversation.id else None
 
+    class Empty:
+        pass
+
     access = Access()
-    service = SystemConversationService(access=access, repository=Repository())  # type: ignore[arg-type]
+    service = SystemConversationService(
+        access=access,
+        repository=Repository(),
+        workspaces=Empty(),
+        assistants=Empty(),
+        sources=Empty(),
+        associations=Empty(),
+        rag=Empty(),
+    )
     assert service.get(reader, conversation.id) is conversation
-    assert access.calls == [(reader, Permission.SYSTEM_CONVERSATIONS_READ)]
+    assert access.calls == [
+        (reader, Permission.SYSTEM_CONVERSATIONS_READ),
+        (reader, Permission.SYSTEM_WORKSPACES_READ),
+        (reader, Permission.SYSTEM_ASSISTANTS_READ),
+        (reader, Permission.SYSTEM_KNOWLEDGE_READ),
+    ]
 
 
 def test_system_conversation_permission_cannot_read_workspace_conversations() -> None:
