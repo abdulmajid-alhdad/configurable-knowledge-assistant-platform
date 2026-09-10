@@ -29,6 +29,76 @@ const POLICY_LABELS = {
 
 const ROLE_LABELS = { SYSTEM_ADMIN: "مدير النظام" };
 
+const AUDIT_ACTION_LABELS = {
+  "assistant.created": "إنشاء المساعد",
+  "assistant.updated": "تحديث المساعد",
+  "assistant.source_attached": "إرفاق مصدر معرفة بالمساعد",
+  "assistant.source_detached": "إزالة مصدر المعرفة من المساعد",
+  "artifact.stored": "حفظ الملف الأصلي",
+  "knowledge_source.create_denied": "رفض إنشاء مصدر المعرفة",
+  "knowledge_source.created": "إنشاء مصدر المعرفة",
+  "knowledge_source.processed": "معالجة مصدر المعرفة",
+  "governance.updated": "تحديث ضابط الحوكمة",
+  "workspace.created": "إنشاء مساحة العمل",
+  "workspace.updated": "تحديث مساحة العمل",
+  "role.create_denied": "رفض إنشاء الدور",
+  "role.created": "إنشاء الدور",
+  "role.updated": "تحديث الدور",
+  "role.deleted": "حذف الدور",
+  "member.role_changed": "تغيير دور العضو",
+  "member.removed": "إزالة العضو",
+  "team.create_denied": "رفض إنشاء الفريق",
+  "team.created": "إنشاء الفريق",
+  "team.updated": "تحديث الفريق",
+  "team.deleted": "حذف الفريق",
+  "team.member_added": "إضافة عضو إلى الفريق",
+  "team.member_removed": "إزالة عضو من الفريق",
+  "invitation.created": "إنشاء الدعوة",
+  "invitation.revoked": "إلغاء الدعوة",
+  "identity.user_provisioned": "توفير حساب مستخدم",
+  "membership.activated": "تفعيل العضوية",
+  "subscription.updated": "تحديث الاشتراك",
+  "provider.updated": "تحديث المزوّد",
+  "credential_reference.saved": "حفظ مرجع بيانات الاعتماد",
+  "credential_reference.deleted": "حذف مرجع بيانات الاعتماد",
+  "api_key.create_denied": "رفض إنشاء مفتاح API",
+  "api_key.created": "إنشاء مفتاح API",
+  "api_key.revoked": "إلغاء مفتاح API",
+  "security.updated": "تحديث إعدادات الأمان",
+  "workspace_settings.updated": "تحديث إعدادات مساحة العمل",
+  "evaluation.run_requested": "طلب تشغيل التقييم",
+  "evaluation.rerun_requested": "طلب إعادة تشغيل التقييم",
+  "evaluation.run_started": "بدء تشغيل التقييم",
+  "evaluation.run_completed": "اكتمال تشغيل التقييم",
+  "evaluation.run_denied": "رفض تشغيل التقييم",
+  "evaluation.run_failed": "فشل تشغيل التقييم",
+};
+
+const AUDIT_RESOURCE_TYPE_LABELS = {
+  assistant: "مساعد",
+  knowledge_source: "مصدر معرفة",
+  governance_setting: "ضابط حوكمة",
+  workspace: "مساحة عمل",
+  role: "دور",
+  membership: "عضوية",
+  team: "فريق",
+  invitation: "دعوة",
+  user_profile: "ملف المستخدم",
+  subscription: "اشتراك",
+  provider: "مزوّد",
+  credential_reference: "مرجع بيانات الاعتماد",
+  api_key: "مفتاح API",
+  security_settings: "إعدادات الأمان",
+  workspace_settings: "إعدادات مساحة العمل",
+  evaluation_run: "تشغيل تقييم",
+};
+
+const AUDIT_OUTCOME_LABELS = {
+  succeeded: "ناجح",
+  failed: "فشل",
+  denied: "مرفوض",
+};
+
 function permissions() {
   return new Set(window.__controlPlanePermissions || []);
 }
@@ -64,6 +134,18 @@ function primary(primaryValue, secondary = null) {
 
 function technical(value) {
   return value === null || value === undefined ? null : el("span", { className: "technical-code", dir: "ltr" }, String(value));
+}
+
+function auditLabel(labels, value) {
+  const canonical = value === null || value === undefined || value === "" ? "—" : String(value);
+  return { canonical, label: labels[canonical] || canonical };
+}
+
+function auditPresentation(labels, value) {
+  const { canonical, label } = auditLabel(labels, value);
+  return label === canonical
+    ? label
+    : el("div", { className: "primary-cell" }, el("strong", {}, label), technical(canonical));
 }
 
 function info(label, value, technicalValue = false) {
@@ -931,10 +1013,10 @@ function auditDetails(event, workspaceName) {
   drawer("تفاصيل حدث السجل", el("div", { className: "stack" },
     el("dl", { className: "info-grid" },
       info("مساحة العمل", workspaceName),
-      info("الإجراء", event.action, true),
-      info("نوع المورد", event.resource_type, true),
+      info("الإجراء", auditPresentation(AUDIT_ACTION_LABELS, event.action)),
+      info("نوع المورد", auditPresentation(AUDIT_RESOURCE_TYPE_LABELS, event.resource_type)),
       info("معرّف المورد", event.resource_id || "—", true),
-      info("النتيجة", event.outcome, true),
+      info("النتيجة", auditPresentation(AUDIT_OUTCOME_LABELS, event.outcome)),
       info("الفاعل", event.actor_user_id || "غير متاح", true),
       info("معرّف الطلب", event.request_id || "—", true),
       info("التوقيت", formatDate(event.occurred_at)),
@@ -961,10 +1043,28 @@ export function auditPage() {
       if (actionFilter) query.set("action", actionFilter);
       const resource = `audit:${selectedWorkspace}:${query}`;
       load(resource, () => getJSON(`/api/system/workspaces/${selectedWorkspace}/audit?${query}`), host, (items) => {
-        const actionInput = el("input", { value: actionFilter, dir: "ltr", placeholder: "workspace.updated" });
-        const search = action("تطبيق التصفية", () => { actionFilter = actionInput.value.trim(); offset = 0; render(); }, "button secondary");
+        const actionSelect = el(
+          "select",
+          { value: actionFilter },
+          el("option", { value: "" }, "كل الإجراءات"),
+          ...Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => (
+            el("option", { value }, label)
+          )),
+        );
+        const search = action("تطبيق التصفية", () => {
+          actionFilter = actionSelect.value;
+          offset = 0;
+          render();
+        }, "button secondary");
         const workspaceName = workspaces.find((item) => item.id === selectedWorkspace)?.name || "—";
-        const rows = items.map((item) => [primary(item.action, item.id), primary(item.resource_type, item.resource_id), item.outcome, item.actor_user_id ? technical(item.actor_user_id) : "—", formatDate(item.occurred_at), action("التفاصيل", () => auditDetails(item, workspaceName), "button secondary small")]);
+        const rows = items.map((item) => [
+          auditLabel(AUDIT_ACTION_LABELS, item.action).label,
+          auditLabel(AUDIT_RESOURCE_TYPE_LABELS, item.resource_type).label,
+          auditLabel(AUDIT_OUTCOME_LABELS, item.outcome).label,
+          item.actor_user_id ? technical(item.actor_user_id) : "—",
+          formatDate(item.occurred_at),
+          action("التفاصيل", () => auditDetails(item, workspaceName), "button secondary small"),
+        ]);
         const pagination = el("div", { className: "form-actions" },
           action("الأحدث", () => { offset = Math.max(0, offset - limit); render(); }, "button secondary small"),
           el("span", { className: "secondary-meta" }, `العناصر ${offset + 1}–${offset + items.length}`),
@@ -974,7 +1074,7 @@ export function auditPage() {
         pagination.lastElementChild.disabled = items.length < limit;
         host.replaceChildren(
           pageHeader("سجل النظام", "أحداث التدقيق الحقيقية ضمن مساحة العمل المحددة وبصلاحية النظام."),
-          panel("النطاق والتصفية", el("div", { className: "form-grid" }, workspaceSelect(workspaces, selectedWorkspace, (value) => { selectedWorkspace = value; offset = 0; render(); }), field("رمز الإجراء", actionInput)), search),
+          panel("النطاق والتصفية", el("div", { className: "form-grid" }, workspaceSelect(workspaces, selectedWorkspace, (value) => { selectedWorkspace = value; offset = 0; render(); }), field("تصفية الإجراء", actionSelect)), search),
           panel("الأحداث", rows.length ? table(["الإجراء", "المورد", "النتيجة", "الفاعل", "التوقيت", ""], rows) : emptyState("لا توجد أحداث مطابقة"), pagination),
         );
       });

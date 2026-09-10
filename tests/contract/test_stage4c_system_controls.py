@@ -182,6 +182,13 @@ def test_audit_metadata_is_redacted_before_delivery_and_ui_is_read_only() -> Non
     audit_section = pages.split("export function auditPage", 1)[1].split(
         "function systemAccessForm", 1
     )[0]
+    assert "AUDIT_ACTION_LABELS" in pages
+    assert '"assistant.updated": "تحديث المساعد"' in pages
+    assert '"provider.updated": "تحديث المزوّد"' in pages
+    assert '"security.updated": "تحديث إعدادات الأمان"' in pages
+    assert "auditLabel(AUDIT_ACTION_LABELS, item.action).label" in audit_section
+    assert 'el("option", { value: "" }, "كل الإجراءات")' in audit_section
+    assert "actionFilter = actionSelect.value" in audit_section
     assert "/audit?" in audit_section
     assert 'method: "POST"' not in audit_section
     assert 'method: "PATCH"' not in audit_section
