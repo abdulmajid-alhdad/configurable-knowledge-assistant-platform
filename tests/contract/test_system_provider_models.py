@@ -390,16 +390,17 @@ def test_system_api_and_ui_distinguish_all_configuration_sources() -> None:
     security = read("src/knowledge_platform/delivery/security.py")
     providers = read("frontend/system/controls-pages.js").split(
         "export function providersPage", 1
-    )[1].split("function providerEditor", 1)[0]
+    )[1].split("function credentialForm", 1)[0]
 
     assert '@router.get("/runtime")' in delivery
     assert '@router.put("/runtime/{capability}")' in delivery
     assert "Permission.PROVIDERS_MANAGE" in security
-    assert "تهيئة التشغيل الفعالة" in providers
-    assert "تهيئة التشغيل المحفوظة" in providers
-    assert "بيئة التشغيل الاحتياطية" in providers
-    assert "مراجع النماذج المحفوظة على المساعدين" in providers
-    assert "لا تُستخدم لاختيار نموذج التنفيذ" in providers
+    assert "الحالة التشغيلية" in providers
+    assert "إعداد النظام المحفوظ" in providers
+    assert "بيئة الخادم الاحتياطية" in providers
+    assert "تفاصيل تشغيل متقدمة" in providers
+    assert "/assistants" not in providers
+    assert "assistantReferences" not in providers
     assert "/chat/completions" not in providers
     assert '"/embeddings"' not in providers
     assert "vector" not in providers.lower()
