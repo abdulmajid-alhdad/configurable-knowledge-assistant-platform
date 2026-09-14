@@ -1,6 +1,6 @@
-import { SYSTEM_ROUTES } from "/assets/system/routes.js?v=stage4-provider-resolution-1";
-import { getJSON } from "/assets/shared/api.js?v=stage4-provider-resolution-1";
-import { startSurface } from "/assets/shared/surface.js?v=stage4-provider-resolution-1";
+import { SYSTEM_ROUTES } from "/assets/system/routes.js?v=stage4-providers-ux-1";
+import { getJSON } from "/assets/shared/api.js?v=stage4-providers-ux-1";
+import { startSurface } from "/assets/shared/surface.js?v=stage4-providers-ux-1";
 
 export async function start() {
   try {

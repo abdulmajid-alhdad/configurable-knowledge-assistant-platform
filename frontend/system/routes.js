@@ -1,5 +1,5 @@
-import { SYSTEM_CONTROL_PAGES } from "/assets/system/controls-pages.js?v=stage4-provider-resolution-1";
-import { SYSTEM_PAGES } from "/assets/system/pages.js?v=stage4-provider-resolution-1";
+import { SYSTEM_CONTROL_PAGES } from "/assets/system/controls-pages.js?v=stage4-providers-ux-1";
+import { SYSTEM_PAGES } from "/assets/system/pages.js?v=stage4-providers-ux-1";
 
 const system = (path, label, permission, description, render = null) => ({
   path, label, requiredPermission: permission, scope: "SYSTEM",

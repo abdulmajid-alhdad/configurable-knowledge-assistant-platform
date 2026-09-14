@@ -110,15 +110,45 @@ def test_provider_usage_is_authorized_and_normalized_without_secret_fields() -> 
     assert "api_key" not in result
 
 
-def test_provider_catalogue_reads_runtime_metadata_without_model_execution() -> None:
+def test_provider_control_surface_prioritizes_effective_runtime_state() -> None:
     pages = read("frontend/system/controls-pages.js")
+    provider_contract = read(
+        "src/knowledge_platform/application/provider_configuration.py"
+    )
     provider_section = pages.split("export function providersPage", 1)[1].split(
         "function credentialForm", 1
     )[0]
+    supported_rows = provider_section.split(
+        "const supportedProviderRows", 1
+    )[1].split("const providerRows", 1)[0]
+    workspace_rows = provider_section.split("const providerRows", 1)[1].split(
+        "const generationChange", 1
+    )[0]
     assert "/providers" in provider_section
-    assert "/assistants" in provider_section
+    assert "/assistants" not in provider_section
+    assert "assistantReferences" not in provider_section
     assert 'getJSON("/api/system/providers/runtime")' in provider_section
+    assert '"الحالة التشغيلية"' in provider_section
+    assert 'effectiveRuntimeConfigurationCard("نموذج التوليد"' in provider_section
     assert "data.runtime.effective.embedding" in provider_section
+    assert 'effectiveRuntimeConfigurationCard("نموذج التمثيلات المتجهية"' in provider_section
+    assert '"تغيير نموذج التوليد"' in pages
+    assert '"تغيير نموذج التمثيلات"' in pages
+    assert 'if (!can("providers.manage")) return null;' in pages
+    assert '"إعداد النظام المحفوظ"' in provider_section
+    assert '"بيئة الخادم الاحتياطية"' in provider_section
+    assert '"تفاصيل تشغيل متقدمة"' in provider_section
+    assert '"إتاحة المزود لمساحات العمل"' in provider_section
+    assert "administrative_status" not in supported_rows
+    assert ".enabled" not in supported_rows
+    assert "providerCatalogueDetails(provider)" in supported_rows
+    assert "workspaceProviders.get(definition.code)" in workspace_rows
+    assert '"لا توجد إعدادات لهذا المزود في مساحة العمل"' in workspace_rows
+    assert '"لم يتم اختيار مساحة عمل"' in workspace_rows
+    assert "structurally_ready: bool = True" in provider_contract
+    assert "result = asdict(value)" in provider_contract
+    assert 'value === true ? "التهيئة مكتملة" : "التهيئة غير مكتملة"' in pages
+    assert "/api/system/providers/runtime/${capability}" in pages
     assert "/ask" not in provider_section
     assert "/process" not in provider_section
     assert "/chat/completions" not in provider_section

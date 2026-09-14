@@ -466,24 +466,46 @@ function providerEditor(workspaceId, provider, onSaved) {
 }
 
 function providerDetails(workspaceId, provider, onSaved) {
+  const hasWorkspaceConfiguration = typeof provider.enabled === "boolean"
+    && typeof provider.administrative_status === "string";
+  const missingConfiguration = workspaceId
+    ? "لا توجد إعدادات لهذا المزود في مساحة العمل"
+    : "لم يتم اختيار مساحة عمل";
   const content = el(
     "div",
     { className: "stack" },
-    el("p", { className: "detail-lead" }, "تعريف المزود عام في سجل المنصة، بينما السماح والحالة والعنوان البديل بيانات إدارية تخص مساحة العمل المحددة. لا تمثل هذه القيم تحققًا حيًا من اتصال المزود."),
+    el("p", { className: "detail-lead" }, "تعريف المزود عام في سجل المنصة. إتاحة المزود وحالته الإدارية، عند توفرهما، تخص مساحة العمل المحددة ولا تحددان نموذج التشغيل العام."),
     el("dl", { className: "info-grid" },
       info("الاسم", provider.display_name),
       info("القدرة المسجلة", providerTypeLabel(provider.provider_type)),
-      info("الحالة الإدارية", providerStatusLabel(provider.administrative_status)),
-      info("سماح المساحة", provider.enabled ? "مسموح إداريًا" : "موقوف إداريًا"),
-      info("العنوان الإداري المسجل", provider.base_url || "غير محدد", true),
-      info("آخر تحديث", formatDate(provider.updated_at)),
+      info("الحالة الإدارية", hasWorkspaceConfiguration ? providerStatusLabel(provider.administrative_status) : missingConfiguration),
+      info("سماح المساحة", hasWorkspaceConfiguration ? (provider.enabled ? "مسموح إداريًا" : "موقوف إداريًا") : missingConfiguration),
+      info("العنوان الإداري البديل", hasWorkspaceConfiguration ? (provider.base_url_override || "غير محدد") : missingConfiguration, true),
+      hasWorkspaceConfiguration ? info("آخر تحديث", formatDate(provider.updated_at)) : null,
     ),
     technical(provider.code),
   );
   const details = drawer(provider.display_name, content);
-  if (can("providers.manage")) {
+  if (workspaceId && hasWorkspaceConfiguration && can("providers.manage")) {
     content.append(action("تعديل البيانات الإدارية", () => { details.close(); providerEditor(workspaceId, provider, onSaved); }));
   }
+}
+
+function providerCatalogueDetails(provider) {
+  drawer(
+    provider.display_name,
+    el(
+      "div",
+      { className: "stack" },
+      el("p", { className: "detail-lead" }, "تعريف المزود وقدراته المسجلة في المنصة. لا تتضمن هذه التفاصيل إعدادات أي مساحة عمل ولا تمثل اختبار اتصال حيًا."),
+      el("dl", { className: "info-grid" },
+        info("الاسم", provider.display_name),
+        info("القدرة المسجلة", providerTypeLabel(provider.provider_type)),
+        info("العنوان الافتراضي", provider.base_url || "غير محدد", true),
+      ),
+      technical(provider.code),
+    ),
+  );
 }
 
 const PROVIDER_TYPE_LABELS = {
@@ -506,23 +528,48 @@ function providerStatusLabel(value) {
   return PROVIDER_STATUS_LABELS[value] || value || "غير محدد";
 }
 
-function providerDisplayName(value) {
-  return value === "openrouter" ? "OpenRouter" : "مزود بعيد";
+function providerDisplayName(value, providers = []) {
+  return providers.find((provider) => provider.code === value)?.display_name || value || "مزود بعيد";
 }
 
 function configurationSourceLabel(source) {
-  return source === "PERSISTED" ? "تهيئة النظام المحفوظة" : "تهيئة البيئة الاحتياطية";
+  if (source === "PERSISTED") return "إعداد النظام المحفوظ";
+  if (source === "ENVIRONMENT_FALLBACK") return "بيئة الخادم الاحتياطية";
+  return source || "مصدر تهيئة غير معروف";
 }
 
-function runtimeConfigurationCard(title, configuration, dimensions = false, actions = []) {
+function structuralReadinessLabel(value) {
+  return value === true ? "التهيئة مكتملة" : "التهيئة غير مكتملة";
+}
+
+function effectiveRuntimeConfigurationCard(title, capability, configuration, providers, onChange) {
   const facts = [
-    info("المزود", primary(providerDisplayName(configuration.provider), configuration.provider)),
+    info("المزود", providerDisplayName(configuration.provider, providers)),
+    info("معرّف النموذج لدى المزود", technical(configuration.model_id)),
+    info("مصدر التهيئة", configurationSourceLabel(configuration.source)),
+    info("الجاهزية البنيوية", structuralReadinessLabel(configuration.structurally_ready)),
+  ];
+  if (capability === "embedding" && Number.isInteger(configuration.dimensions)) {
+    facts.splice(2, 0, info("أبعاد التمثيل", String(configuration.dimensions)));
+  }
+  return el(
+    "article",
+    { className: "provider-config-card" },
+    el("h3", {}, title),
+    el("dl", { className: "info-grid" }, ...facts),
+    onChange ? el("div", { className: "form-actions" }, onChange) : null,
+  );
+}
+
+function runtimeConfigurationDetailsCard(title, configuration, dimensions = false, providers = []) {
+  const facts = [
+    info("المزود", primary(providerDisplayName(configuration.provider, providers), configuration.provider)),
     info("معرّف النموذج لدى المزود", technical(configuration.model_id)),
     info("عنوان المزود", technical(configuration.endpoint)),
     info("مرجع بيانات الاعتماد", technical(configuration.credential_reference)),
     info("مصدر التهيئة", configurationSourceLabel(configuration.source)),
     info("النطاق", "عام للنظام"),
-    info("الجاهزية", configuration.structurally_ready === false ? "غير مكتملة" : "مكتملة بنيويًا؛ الاتصال غير مختبر"),
+    info("الجاهزية البنيوية", structuralReadinessLabel(configuration.structurally_ready)),
   ];
   if (dimensions && Number.isInteger(configuration.dimensions)) {
     facts.splice(2, 0, info("أبعاد التمثيل", String(configuration.dimensions)));
@@ -532,32 +579,33 @@ function runtimeConfigurationCard(title, configuration, dimensions = false, acti
     { className: "provider-config-card" },
     el("h3", {}, title),
     el("dl", { className: "info-grid" }, ...facts),
-    actions.length ? el("div", { className: "form-actions" }, ...actions) : null,
   );
 }
 
-function persistedConfigurationCard(title, capability, configuration, fallback, providers, onSaved) {
-  const edit = can("providers.manage")
-    ? action(configuration ? "تعديل التهيئة المحفوظة" : "إنشاء تهيئة محفوظة", () => {
-      runtimeConfigurationEditor(capability, configuration || fallback, providers, onSaved);
-    }, "button secondary small")
-    : null;
+function persistedConfigurationCard(title, capability, configuration, providers) {
   if (!configuration) {
     return el(
       "article",
       { className: "provider-config-card" },
       el("h3", {}, title),
       el("p", { className: "detail-lead" }, "لا توجد تهيئة محفوظة. تهيئة البيئة الاحتياطية هي الفعالة."),
-      edit,
     );
   }
   const value = { ...configuration, source: "PERSISTED", structurally_ready: true };
-  const card = runtimeConfigurationCard(title, value, capability === "embedding", edit ? [edit] : []);
+  const card = runtimeConfigurationDetailsCard(title, value, capability === "embedding", providers);
   card.querySelector(".info-grid")?.append(
     info("حالة التفعيل", configuration.active ? "مفعلة" : "غير مفعلة؛ البيئة الاحتياطية فعالة"),
     info("تاريخ الحفظ", formatDate(configuration.created_at)),
   );
   return card;
+}
+
+function changeRuntimeModelAction(capability, persisted, fallback, providers, onSaved) {
+  if (!can("providers.manage")) return null;
+  const label = capability === "embedding" ? "تغيير نموذج التمثيلات" : "تغيير نموذج التوليد";
+  return action(label, () => {
+    runtimeConfigurationEditor(capability, persisted || fallback, providers, onSaved);
+  });
 }
 
 function runtimeConfigurationEditor(capability, initial, providers, onSaved) {
@@ -576,10 +624,19 @@ function runtimeConfigurationEditor(capability, initial, providers, onSaved) {
     el("p", { className: "detail-lead" }, "تُحفظ مراجع بيانات الاعتماد فقط. لا تُخزّن قيمة سرية، ولا يُجرى اختبار اتصال بالمزود عند الحفظ."),
     field("المزود المدعوم", provider),
     field("معرّف النموذج لدى المزود", model),
-    field("عنوان المزود البعيد", endpoint),
-    field("مرجع بيانات الاعتماد", credential, "اسم مرجع خادمي مثل OPENROUTER_API_KEY، وليس قيمة السر."),
-    dimensions ? field("أبعاد التمثيل", dimensions) : null,
     active.node,
+    el(
+      "details",
+      { className: "provider-advanced-details" },
+      el("summary", {}, "تفاصيل تشغيل متقدمة"),
+      el(
+        "div",
+        { className: "stack" },
+        field("عنوان المزود البعيد", endpoint),
+        field("مرجع بيانات الاعتماد", credential, "اسم مرجع خادمي مثل OPENROUTER_API_KEY، وليس قيمة السر."),
+        dimensions ? field("أبعاد التمثيل", dimensions) : null,
+      ),
+    ),
     feedback,
   );
   const save = action("حفظ تهيئة التشغيل", async () => {
@@ -617,63 +674,97 @@ export function providersPage() {
       selectedWorkspace = selectedWorkspace || workspaces[0]?.id || null;
       const resource = `providers:${selectedWorkspace || "runtime"}`;
       load(resource, async () => {
-        const [runtime, providers, assistants] = await Promise.all([
+        const [runtime, providers] = await Promise.all([
           getJSON("/api/system/providers/runtime"),
           selectedWorkspace ? getJSON(`/api/system/workspaces/${selectedWorkspace}/providers`) : Promise.resolve([]),
-          selectedWorkspace && can("system_assistants.read") ? getJSON(`/api/system/workspaces/${selectedWorkspace}/assistants`) : Promise.resolve([]),
         ]);
-        return { runtime, providers, assistants };
+        return { runtime, providers };
       }, host, (data) => {
         const reload = () => { invalidate(resource); render(); };
-        const providerRows = data.providers.map((provider) => [
+        const workspaceProviders = new Map(data.providers.map((provider) => [provider.code, provider]));
+        const supportedProviderRows = data.runtime.providers.map((provider) => [
           primary(provider.display_name, provider.code),
-          primary(providerTypeLabel(provider.provider_type), provider.provider_type),
-          primary(providerStatusLabel(provider.administrative_status), provider.administrative_status),
-          el("span", { className: `capability-state ${provider.enabled ? "enabled" : "disabled"}` }, provider.enabled ? "مسموح إداريًا" : "موقوف إداريًا"),
-          action("عرض", () => providerDetails(selectedWorkspace, provider, render), "button secondary small"),
+          providerTypeLabel(provider.provider_type),
+          action("عرض التفاصيل", () => providerCatalogueDetails(provider), "button secondary small"),
         ]);
-        const assistantReferences = data.assistants.map((assistant) => [
-          primary(assistant.name, assistant.language ? `اللغة: ${assistant.language}` : null),
-          primary(providerDisplayName(assistant.provider), assistant.provider),
-          technical(assistant.model_reference),
-          "محفوظ على المساعد؛ غير مستخدم لاختيار نموذج runtime الحالي",
-        ]);
+        const providerRows = data.runtime.providers.map((definition) => {
+          const provider = workspaceProviders.get(definition.code);
+          const missingConfiguration = selectedWorkspace
+            ? "لا توجد إعدادات لهذا المزود في مساحة العمل"
+            : "لم يتم اختيار مساحة عمل";
+          return [
+            primary(definition.display_name, definition.code),
+            providerTypeLabel(definition.provider_type),
+            provider ? providerStatusLabel(provider.administrative_status) : missingConfiguration,
+            provider
+              ? el("span", { className: `capability-state ${provider.enabled ? "enabled" : "disabled"}` }, provider.enabled ? "مسموح إداريًا" : "موقوف إداريًا")
+              : missingConfiguration,
+            action("عرض التفاصيل", () => providerDetails(selectedWorkspace, provider || definition, reload), "button secondary small"),
+          ];
+        });
+        const generationChange = changeRuntimeModelAction(
+          "generation",
+          data.runtime.persisted.generation,
+          data.runtime.environment_fallback.generation,
+          data.runtime.providers,
+          reload,
+        );
+        const embeddingChange = changeRuntimeModelAction(
+          "embedding",
+          data.runtime.persisted.embedding,
+          data.runtime.environment_fallback.embedding,
+          data.runtime.providers,
+          reload,
+        );
+        const advancedDetails = el(
+          "details",
+          { className: "provider-advanced-details" },
+          el("summary", {}, "تفاصيل تشغيل متقدمة"),
+          el(
+            "div",
+            { className: "stack" },
+            el("p", { className: "detail-lead" }, "تعرض هذه التفاصيل مصدر التهيئة وحقول الاتصال ومرجع الاعتماد. لا تمثل جاهزية التهيئة اختبار اتصال حيًا بالمزود."),
+            el("h3", {}, "إعداد النظام المحفوظ"),
+            el("div", { className: "provider-runtime-grid" },
+              persistedConfigurationCard("إعداد التوليد المحفوظ", "generation", data.runtime.persisted.generation, data.runtime.providers),
+              persistedConfigurationCard("إعداد التمثيلات المحفوظ", "embedding", data.runtime.persisted.embedding, data.runtime.providers),
+            ),
+            el("h3", {}, "بيئة الخادم الاحتياطية"),
+            el("div", { className: "provider-runtime-grid" },
+              runtimeConfigurationDetailsCard("توليد احتياطي", data.runtime.environment_fallback.generation, false, data.runtime.providers),
+              runtimeConfigurationDetailsCard("تمثيلات احتياطية", data.runtime.environment_fallback.embedding, true, data.runtime.providers),
+            ),
+          ),
+        );
         const sections = [
-          pageHeader("المزودون والنماذج", "تهيئة نظام موحّدة للتوليد والتمثيلات المتجهية، مع فصل البيانات الإدارية ومراجع المساعدين."),
+          pageHeader("المزودون والنماذج", "تحكم في النماذج البعيدة الفعالة التي يستخدمها النظام للتوليد والتمثيلات المتجهية."),
           panel(
-            "تهيئة التشغيل الفعالة",
-            el("p", { className: "detail-lead" }, "هذه هي التهيئة التي يستهلكها التنفيذ اللاحق فعليًا. التهيئة المحفوظة المفعلة لها الأولوية، وإلا تُستخدم بيئة التشغيل الاحتياطية كوحدة كاملة."),
+            "الحالة التشغيلية",
+            el("p", { className: "detail-lead" }, "هذه هي النماذج البعيدة التي سيستخدمها التنفيذ اللاحق. إعداد النظام المحفوظ له الأولوية، وإلا تُستخدم بيئة الخادم الاحتياطية كوحدة كاملة."),
             el("div", { className: "provider-runtime-grid" },
-              runtimeConfigurationCard("التوليد", data.runtime.effective.generation),
-              runtimeConfigurationCard("التمثيلات المتجهية", data.runtime.effective.embedding, true),
+              effectiveRuntimeConfigurationCard("نموذج التوليد", "generation", data.runtime.effective.generation, data.runtime.providers, generationChange),
+              effectiveRuntimeConfigurationCard("نموذج التمثيلات المتجهية", "embedding", data.runtime.effective.embedding, data.runtime.providers, embeddingChange),
             ),
           ),
           panel(
-            "تهيئة التشغيل المحفوظة",
-            el("p", { className: "detail-lead" }, "تهيئة عالمية يملكها النظام. لا تصبح فعالة إلا عند اكتمالها وتفعيلها، وتُحفظ كل مراجعة مع مصدرها الزمني."),
-            el("div", { className: "provider-runtime-grid" },
-              persistedConfigurationCard("التوليد المحفوظ", "generation", data.runtime.persisted.generation, data.runtime.environment_fallback.generation, data.runtime.providers, reload),
-              persistedConfigurationCard("التمثيلات المحفوظة", "embedding", data.runtime.persisted.embedding, data.runtime.environment_fallback.embedding, data.runtime.providers, reload),
-            ),
-          ),
-          panel(
-            "بيئة التشغيل الاحتياطية",
-            el("p", { className: "detail-lead" }, "تُستخدم فقط عند عدم وجود تهيئة محفوظة مفعلة. لا تُخلط حقول المصدرين، ولا تعالج البيئة تهيئة محفوظة مفعلة لكنها غير صالحة."),
-            el("div", { className: "provider-runtime-grid" },
-              runtimeConfigurationCard("توليد احتياطي", data.runtime.environment_fallback.generation),
-              runtimeConfigurationCard("تمثيلات احتياطية", data.runtime.environment_fallback.embedding, true),
-            ),
+            "المزودون المدعومون",
+            el("p", { className: "detail-lead" }, "سجل المزودين المدعومين وقدراتهم في المنصة. لا تتضمن هذه القائمة إعدادات مساحات العمل ولا تمثل اختبار اتصال حيًا."),
+            supportedProviderRows.length
+              ? table(["المزود", "القدرات المسجلة", ""], supportedProviderRows)
+              : emptyState("لا توجد مزودات مدعومة مسجلة"),
           ),
           workspaces.length
-            ? panel("نطاق البيانات الإدارية", el("p", { className: "detail-lead" }, "اختيار مساحة العمل يغيّر بيانات السماح الإداري ومراجع المساعدين فقط، ولا يغيّر تهيئة التشغيل العالمية أعلاه."), workspaceSelect(workspaces, selectedWorkspace, (value) => { selectedWorkspace = value; render(); }))
-            : panel("نطاق البيانات الإدارية", emptyState("لا توجد مساحات عمل")),
+            ? panel(
+              "إتاحة المزود لمساحات العمل",
+              el("p", { className: "detail-lead" }, "هذه الإعدادات تتحكم في الإتاحة الإدارية للمزود داخل مساحة العمل المحددة، ولا تغيّر نموذج التشغيل العام للنظام."),
+              workspaceSelect(workspaces, selectedWorkspace, (value) => { selectedWorkspace = value; render(); }),
+              providerRows.length
+                ? table(["المزود", "القدرة", "الحالة الإدارية", "إتاحة المساحة", ""], providerRows)
+                : emptyState("لا توجد إعدادات مزود للمساحة المحددة"),
+            )
+            : panel("إتاحة المزود لمساحات العمل", emptyState("لا توجد مساحات عمل")),
+          advancedDetails,
         ];
-        if (selectedWorkspace) {
-          sections.push(
-            panel("سجل المزود وإعداد المساحة", el("p", { className: "detail-lead" }, "الحالة والسماح هنا بيانات إدارية محفوظة، وليست إثباتًا لاتصال المزود أو مصدر اختيار النموذج التنفيذي."), providerRows.length ? table(["المزود المسجل", "القدرة المسجلة", "الحالة الإدارية", "سماح المساحة", ""], providerRows) : emptyState("لا توجد إعدادات مزود")),
-            panel("مراجع النماذج المحفوظة على المساعدين", el("p", { className: "detail-lead" }, "هذه المراجع بيانات وصفية داخل إعداد كل مساعد، ولا تُستخدم لاختيار نموذج التنفيذ في هذا العقد."), assistantReferences.length ? table(["المساعد", "مرجع المزود المحفوظ", "مرجع النموذج المحفوظ", "الاستهلاك التنفيذي"], assistantReferences) : emptyState("لا توجد مراجع نماذج محفوظة على مساعدين في هذه المساحة")),
-          );
-        }
         host.replaceChildren(...sections);
       });
     } catch (error) {

@@ -1,4 +1,4 @@
-const ASSET_VERSION = "stage4-provider-resolution-1";
+const ASSET_VERSION = "stage4-providers-ux-1";
 const asset = (path) => `${path}?v=${ASSET_VERSION}`;
 
 if (window.location.pathname === "/app/invitations/accept") {
