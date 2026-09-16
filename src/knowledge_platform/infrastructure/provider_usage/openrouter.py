@@ -5,7 +5,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from knowledge_platform.application.provider_usage import ProviderUsageUnavailable
+from knowledge_platform.application.provider_usage import (
+    ProviderUsageSource,
+    ProviderUsageSummary,
+    ProviderUsageUnavailable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +21,12 @@ class OpenRouterUsageAdapter:
         self,
         *,
         api_key: str | Callable[[], str],
+        credential_reference: str | None,
         endpoint: str = "https://openrouter.ai/api/v1/key",
         client: Any = None,
     ) -> None:
         self._api_key = api_key
+        self._credential_reference = credential_reference
         self._endpoint = endpoint
         self._client = client
 
@@ -40,6 +46,16 @@ class OpenRouterUsageAdapter:
             self._client = httpx.Client()
         return self._client
 
+    def _source(self) -> ProviderUsageSource:
+        reference = (self._credential_reference or "").strip()
+        if not reference:
+            raise ProviderUsageUnavailable("credential")
+        return ProviderUsageSource(
+            provider="openrouter",
+            kind="provider_key",
+            credential_reference=reference,
+        )
+
     @staticmethod
     def _number(payload: dict[str, object], key: str) -> float | None:
         value = payload.get(key)
@@ -47,7 +63,8 @@ class OpenRouterUsageAdapter:
             return None
         return float(value)
 
-    def summary(self) -> dict[str, object]:
+    def summary(self) -> ProviderUsageSummary:
+        source = self._source()
         credential = self._credential()
         try:
             response = self._http_client().get(
@@ -74,23 +91,24 @@ class OpenRouterUsageAdapter:
         except Exception:
             logger.warning("provider_usage_read_failed category=schema provider=openrouter")
             raise ProviderUsageUnavailable("schema") from None
-        return {
-            "provider": "openrouter",
-            "retrieved_at": datetime.now(UTC),
-            "currency": "USD",
-            "usage": self._number(data, "usage"),
-            "usage_daily": self._number(data, "usage_daily"),
-            "usage_weekly": self._number(data, "usage_weekly"),
-            "usage_monthly": self._number(data, "usage_monthly"),
-            "limit": self._number(data, "limit"),
-            "limit_remaining": self._number(data, "limit_remaining"),
-            "limit_reset": data.get("limit_reset")
+        return ProviderUsageSummary(
+            provider="openrouter",
+            retrieved_at=datetime.now(UTC),
+            currency="USD",
+            usage=self._number(data, "usage"),
+            usage_daily=self._number(data, "usage_daily"),
+            usage_weekly=self._number(data, "usage_weekly"),
+            usage_monthly=self._number(data, "usage_monthly"),
+            limit=self._number(data, "limit"),
+            limit_remaining=self._number(data, "limit_remaining"),
+            limit_reset=data.get("limit_reset")
             if data.get("limit_reset") in {"daily", "weekly", "monthly"}
             else None,
-            "is_free_tier": data.get("is_free_tier")
+            is_free_tier=data.get("is_free_tier")
             if isinstance(data.get("is_free_tier"), bool)
             else None,
-            "expires_at": data.get("expires_at")
+            expires_at=data.get("expires_at")
             if isinstance(data.get("expires_at"), str)
             else None,
-        }
+            source=source,
+        )

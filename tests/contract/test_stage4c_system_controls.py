@@ -101,13 +101,18 @@ def test_provider_usage_is_authorized_and_normalized_without_secret_fields() -> 
     access = Access()
     service = ProviderUsageService(
         access=access,  # type: ignore[arg-type]
-        telemetry=OpenRouterUsageAdapter(api_key="test-only", client=Client()),
+        telemetry=OpenRouterUsageAdapter(
+            api_key="test-only",
+            credential_reference="OPENROUTER_API_KEY",
+            client=Client(),
+        ),
     )
     result = service.summary(actor)
     assert access.checked == (actor, Permission.USAGE_READ)
-    assert result["usage"] == 2.5
-    assert "label" not in result
-    assert "api_key" not in result
+    assert result.usage == 2.5
+    assert result.source.credential_reference == "OPENROUTER_API_KEY"
+    assert "label" not in repr(result)
+    assert "test-only" not in repr(result)
 
 
 def test_provider_control_surface_prioritizes_effective_runtime_state() -> None:

@@ -349,18 +349,25 @@ export function policiesPage() {
   return host;
 }
 
-function money(value) {
+function normalizedCurrency(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : null;
+}
+
+function money(value, currency) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   const formatted = new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 20,
     useGrouping: true,
   }).format(value);
+  const code = normalizedCurrency(currency);
   return el(
     "bdi",
     { className: "currency-value", dir: "ltr" },
     el("span", { className: "currency-amount" }, formatted),
-    el("span", { className: "currency-code" }, "US$"),
+    code ? el("span", { className: "currency-code" }, code) : null,
   );
 }
 
@@ -374,7 +381,17 @@ function limitResetLabel(value) {
 
 export function usagePage() {
   const host = el("div", { className: "route-panel" });
-  load("provider-usage", () => getJSON("/api/system/usage/provider"), host, (data) => {
+  let usageData = null;
+  let runtimeContext = null;
+  let runtimeRequested = false;
+
+  const render = () => {
+    if (!usageData) return;
+    const data = usageData;
+    const providers = runtimeContext?.providers || [];
+    const sourceProvider = data.source?.provider || data.provider;
+    const providerName = providerDisplayName(sourceProvider, providers);
+    const currency = normalizedCurrency(data.currency);
     const metrics = [
       ["الإنفاق الإجمالي للمفتاح", data.usage],
       ["إنفاق المفتاح اليوم", data.usage_daily],
@@ -388,35 +405,89 @@ export function usagePage() {
         "article",
         { className: "metric-card" },
         el("span", { className: "metric-label" }, label),
-        el("strong", { className: "metric-value" }, money(value)),
-        el("span", { className: "metric-note" }, "إنفاق بالدولار الأمريكي كما يعيده OpenRouter"),
+        el("strong", { className: "metric-value" }, money(value, data.currency)),
+        el("span", { className: "metric-note" }, `قيمة ${currency || "بعملة المزود"} كما يعيدها ${providerName} دون تقدير محلي`),
       )),
     );
-    const providerFacts = el("dl", { className: "info-grid" },
-      info("المزود", data.provider === "openrouter" ? "OpenRouter" : data.provider, true),
+    const sourceFacts = el("dl", { className: "info-grid" },
+      info("المزود", providerName),
+      info("نطاق المصدر", data.source?.kind === "provider_key" ? "مفتاح المزود" : data.source?.kind || "غير محدد"),
+      info("مرجع اعتماد القياس", data.source?.credential_reference || "غير متاح", true),
+      info("العملة", currency || "غير محددة", true),
       info("وقت جلب البيانات", formatDate(data.retrieved_at)),
-      typeof data.is_free_tier === "boolean"
-        ? info("المفتاح ضمن الفئة المجانية", data.is_free_tier ? "نعم" : "لا")
-        : null,
     );
     const limitFacts = [];
-    if (typeof data.limit === "number" && Number.isFinite(data.limit)) limitFacts.push(info("حد إنفاق المفتاح", money(data.limit)));
-    if (typeof data.limit_remaining === "number" && Number.isFinite(data.limit_remaining)) limitFacts.push(info("الرصيد المتبقي ضمن الحد", money(data.limit_remaining)));
+    if (typeof data.limit === "number" && Number.isFinite(data.limit)) limitFacts.push(info("حد إنفاق المفتاح", money(data.limit, data.currency)));
+    if (typeof data.limit_remaining === "number" && Number.isFinite(data.limit_remaining)) limitFacts.push(info("المتبقي ضمن حد المفتاح", money(data.limit_remaining, data.currency)));
     const resetLabel = limitResetLabel(data.limit_reset);
     if (resetLabel) limitFacts.push(info("وتيرة إعادة ضبط الحد", resetLabel));
+    if (typeof data.is_free_tier === "boolean") limitFacts.push(info("المفتاح ضمن الفئة المجانية", data.is_free_tier ? "نعم" : "لا"));
     const sections = [
-      pageHeader("الاستخدام", "إنفاق مفتاح OpenRouter كما يعيده مصدر بيانات المزود المعتمد، دون تقدير محلي."),
-      metrics.length ? cards : emptyState("لا توجد بيانات استخدام للفترة المحددة."),
-      panel("مصدر البيانات", providerFacts),
+      pageHeader("الاستخدام", "بيانات استخدام مفتاح المزود كما يعيدها مصدر القياس المعتمد، دون تقدير أو إسناد محلي."),
+      panel("استخدام المزود", metrics.length ? cards : emptyState("لا توجد بيانات استخدام للفترة المحددة.")),
+      panel("مصدر بيانات الاستخدام", sourceFacts),
     ];
     if (limitFacts.length) {
-      sections.push(panel("حد إنفاق المفتاح", el("dl", { className: "info-grid" }, ...limitFacts)));
+      sections.push(panel("حدود المفتاح", el("dl", { className: "info-grid" }, ...limitFacts)));
+    }
+    if (runtimeContext?.effective) {
+      const generation = runtimeContext.effective.generation;
+      const embedding = runtimeContext.effective.embedding;
+      const sourceReference = data.source?.credential_reference;
+      const referenceMatches = [];
+      if (sourceReference && sourceReference === generation?.credential_reference) {
+        referenceMatches.push(el("li", {}, "مرجع القياس يطابق مرجع التوليد الحالي"));
+      }
+      if (sourceReference && sourceReference === embedding?.credential_reference) {
+        referenceMatches.push(el("li", {}, "مرجع القياس يطابق مرجع التمثيلات الحالي"));
+      }
+      sections.push(panel(
+        "سياق التشغيل الحالي",
+        el(
+          "div",
+          { className: "provider-runtime-grid" },
+          el("article", { className: "provider-runtime-card" },
+            el("h3", {}, "نموذج التوليد"),
+            el("dl", { className: "info-grid" },
+              info("المزود", providerDisplayName(generation?.provider, providers)),
+              info("معرّف النموذج", generation?.model_id || "غير متاح", true),
+            ),
+          ),
+          el("article", { className: "provider-runtime-card" },
+            el("h3", {}, "نموذج التمثيلات المتجهية"),
+            el("dl", { className: "info-grid" },
+              info("المزود", providerDisplayName(embedding?.provider, providers)),
+              info("معرّف النموذج", embedding?.model_id || "غير متاح", true),
+              typeof embedding?.dimensions === "number" ? info("الأبعاد", embedding.dimensions) : null,
+            ),
+          ),
+        ),
+        referenceMatches.length ? el("ul", { className: "detail-list" }, ...referenceMatches) : null,
+        el("p", { className: "provider-warning" }, "بيانات الاستخدام المعروضة صادرة من المزود على مستوى مفتاح القياس، والنماذج المعروضة هنا هي التهيئة الفعالة حاليًا فقط، ولا يعني ذلك أن الإنفاق التاريخي منسوب إليها."),
+      ));
     }
     host.replaceChildren(...sections);
+  };
+
+  const requestRuntimeContext = () => {
+    if (runtimeRequested) return;
+    runtimeRequested = true;
+    getJSON("/api/system/providers/runtime")
+      .then((runtime) => {
+        runtimeContext = runtime;
+        if (host.isConnected) render();
+      })
+      .catch(() => {});
+  };
+
+  load("provider-usage", () => getJSON("/api/system/usage/provider"), host, (data) => {
+    usageData = data;
+    render();
+    requestRuntimeContext();
   }, (error) => error instanceof ApiError && error.status === 503
     ? error.code === "provider usage credential unavailable"
-      ? errorState("إعداد بيانات الاستخدام غير متاح", "مرجع اعتماد OpenRouter غير مهيأ في الخادم.")
-      : errorState("تعذر جلب بيانات الاستخدام من المزود.", "لم يتمكن الخادم من قراءة واجهة استخدام OpenRouter حاليًا.")
+      ? errorState("إعداد بيانات الاستخدام غير متاح", "مرجع اعتماد مصدر القياس غير مهيأ في الخادم.")
+      : errorState("تعذر جلب بيانات الاستخدام من المزود.", "لم يتمكن الخادم من قراءة واجهة استخدام المزود حاليًا.")
     : apiError(error));
   return host;
 }

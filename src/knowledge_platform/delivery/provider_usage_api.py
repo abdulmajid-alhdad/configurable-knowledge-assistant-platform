@@ -1,5 +1,7 @@
 """SYSTEM-scoped, read-only provider usage telemetry delivery."""
 
+from dataclasses import asdict
+
 from fastapi import APIRouter, HTTPException, Request
 
 from knowledge_platform.application.provider_usage import (
@@ -14,7 +16,7 @@ def create_provider_usage_router(service: ProviderUsageControlPort) -> APIRouter
     @router.get("/provider")
     def provider_usage(request: Request) -> dict[str, object]:
         try:
-            return service.summary(request.state.user.id)
+            return asdict(service.summary(request.state.user.id))
         except ProviderUsageUnavailable as exc:
             detail = (
                 "provider usage credential unavailable"

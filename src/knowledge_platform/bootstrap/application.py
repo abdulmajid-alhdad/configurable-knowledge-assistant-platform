@@ -158,7 +158,8 @@ class ApplicationRuntime:
             telemetry=OpenRouterUsageAdapter(
                 api_key=lambda: self.credentials.resolve(
                     self.settings.credential_for_model
-                )
+                ),
+                credential_reference=self.settings.model_credential,
             ),
         )
 
