@@ -192,6 +192,8 @@ def permission_for(path: str, method: str) -> Permission | None:
             return Permission.USAGE_READ
         if path == "/api/system/providers/runtime" and method == "GET":
             return Permission.PROVIDERS_READ
+        if re.match(r"^/api/system/providers/[^/]+/models$", path) and method == "GET":
+            return Permission.PROVIDERS_READ
         if re.match(r"^/api/system/providers/runtime/(generation|embedding)$", path):
             return (
                 Permission.PROVIDERS_READ

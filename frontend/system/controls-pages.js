@@ -608,11 +608,125 @@ function changeRuntimeModelAction(capability, persisted, fallback, providers, on
   });
 }
 
+function modelCatalogueControl(capability, provider, initialProvider, initialModelId) {
+  const selected = el("input", {
+    type: "text",
+    readonly: "readonly",
+    value: initialModelId || "",
+    dir: "ltr",
+    "aria-label": "معرّف النموذج المحدد",
+  });
+  const search = el("input", {
+    type: "search",
+    placeholder: "ابحث بالاسم أو المعرّف",
+    disabled: "disabled",
+  });
+  const state = el("div", { className: "model-catalogue-state", "aria-live": "polite" });
+  const results = el("div", { className: "model-catalogue-results", role: "listbox" });
+  let requestNumber = 0;
+  let models = [];
+  let catalogueReady = false;
+
+  const renderResults = () => {
+    const term = search.value.trim().toLocaleLowerCase("ar");
+    const matches = models.filter((item) => !term
+      || item.display_name.toLocaleLowerCase("ar").includes(term)
+      || item.model_id.toLocaleLowerCase("en").includes(term));
+    if (!matches.length) {
+      results.replaceChildren(emptyState("لا توجد نماذج مطابقة", "غيّر عبارة البحث أو اختر مزودًا آخر."));
+      return;
+    }
+    results.replaceChildren(...matches.slice(0, 60).map((item) => {
+      const choose = action("اختيار", () => {
+        selected.value = item.model_id;
+        renderResults();
+      }, "button secondary small");
+      choose.setAttribute("role", "option");
+      choose.setAttribute("aria-selected", String(selected.value === item.model_id));
+      return el(
+        "article",
+        { className: `model-catalogue-option${selected.value === item.model_id ? " selected" : ""}` },
+        el(
+          "div",
+          { className: "primary-cell" },
+          el("strong", {}, item.display_name),
+          technical(item.model_id),
+          Number.isInteger(item.context_length)
+            ? el("span", { className: "secondary-meta" }, `سعة السياق: ${item.context_length.toLocaleString("ar-SA")} رمز`)
+            : null,
+        ),
+        choose,
+      );
+    }));
+  };
+
+  const loadCatalogue = async ({ providerChanged = false } = {}) => {
+    const providerCode = provider.value;
+    const currentRequest = ++requestNumber;
+    if (providerChanged && providerCode !== initialProvider) selected.value = "";
+    if (providerCode === initialProvider && !selected.value) selected.value = initialModelId || "";
+    search.value = "";
+    search.disabled = true;
+    models = [];
+    catalogueReady = false;
+    results.replaceChildren();
+    state.replaceChildren(loadingState("جارٍ تحميل دليل النماذج…"));
+    try {
+      const catalogue = await getJSON(
+        `/api/system/providers/${encodeURIComponent(providerCode)}/models?capability=${capability}`,
+      );
+      if (currentRequest !== requestNumber) return;
+      models = Array.isArray(catalogue.models) ? catalogue.models : [];
+      catalogueReady = true;
+      search.disabled = false;
+      const selectedAvailable = models.some((item) => item.model_id === selected.value);
+      if (selected.value && !selectedAvailable) {
+        state.replaceChildren(el(
+          "p",
+          { className: "provider-warning" },
+          "النموذج المهيأ حاليًا غير موجود في الدليل المحمّل. سيبقى معرّفه محفوظًا ما لم تختر نموذجًا بديلًا صراحةً.",
+        ));
+      } else {
+        state.replaceChildren(el("p", { className: "field-hint" }, `تم تحميل ${models.length.toLocaleString("ar-SA")} نموذج متوافق.`));
+      }
+      renderResults();
+    } catch (error) {
+      if (currentRequest !== requestNumber) return;
+      search.disabled = true;
+      results.replaceChildren();
+      state.replaceChildren(apiError(
+        error,
+        "تعذر تحميل دليل النماذج. تهيئة التشغيل الحالية لم تتغير.",
+      ));
+    }
+  };
+  search.addEventListener("input", renderResults);
+  provider.addEventListener("change", () => { loadCatalogue({ providerChanged: true }); });
+  return {
+    node: el(
+      "div",
+      { className: "model-catalogue-control" },
+      field("النموذج المحدد", selected, "يُحفظ معرّف النموذج القانوني لدى المزود."),
+      field("البحث في دليل المزود", search),
+      state,
+      results,
+    ),
+    modelId: () => selected.value.trim(),
+    ready: () => catalogueReady,
+    load: loadCatalogue,
+  };
+}
+
 function runtimeConfigurationEditor(capability, initial, providers, onSaved) {
   const allowedTypes = capability === "embedding" ? new Set(["embeddings", "multi"]) : new Set(["generation", "multi"]);
   const provider = el("select", {}, ...providers.filter((item) => allowedTypes.has(item.provider_type)).map((item) => el("option", { value: item.code }, item.display_name)));
   provider.value = initial.provider;
-  const model = el("input", { type: "text", required: "required", value: initial.model_id || "", dir: "ltr" });
+  const modelCatalogue = modelCatalogueControl(
+    capability,
+    provider,
+    initial.provider,
+    initial.model_id,
+  );
   const endpoint = el("input", { type: "url", required: "required", value: initial.endpoint || "", dir: "ltr" });
   const credential = el("input", { type: "text", required: "required", value: initial.credential_reference || "", dir: "ltr", pattern: "[A-Z][A-Z0-9_]{1,79}" });
   const dimensions = capability === "embedding" ? el("input", { type: "number", required: "required", min: "1", max: "65536", value: String(initial.dimensions || 1024), dir: "ltr" }) : null;
@@ -623,7 +737,10 @@ function runtimeConfigurationEditor(capability, initial, providers, onSaved) {
     { className: "source-create-form" },
     el("p", { className: "detail-lead" }, "تُحفظ مراجع بيانات الاعتماد فقط. لا تُخزّن قيمة سرية، ولا يُجرى اختبار اتصال بالمزود عند الحفظ."),
     field("المزود المدعوم", provider),
-    field("معرّف النموذج لدى المزود", model),
+    modelCatalogue.node,
+    capability === "embedding"
+      ? el("p", { className: "provider-warning" }, "تغيير نموذج التمثيلات قد يجعل الفهارس الحالية غير متوافقة. لا تتضمن هذه الواجهة ترحيلًا أو إعادة فهرسة للمعرفة الموجودة.")
+      : null,
     active.node,
     el(
       "details",
@@ -641,12 +758,21 @@ function runtimeConfigurationEditor(capability, initial, providers, onSaved) {
   );
   const save = action("حفظ تهيئة التشغيل", async () => {
     if (!form.reportValidity()) return;
+    if (!modelCatalogue.ready()) {
+      feedback.replaceChildren(errorState("دليل النماذج غير متاح", "لن تتغير تهيئة التشغيل حتى يكتمل تحميل دليل المزود."));
+      return;
+    }
+    const modelId = modelCatalogue.modelId();
+    if (!modelId) {
+      feedback.replaceChildren(errorState("اختر نموذجًا من دليل المزود", "لن تتغير تهيئة التشغيل قبل اختيار نموذج صالح."));
+      return;
+    }
     save.disabled = true;
     feedback.replaceChildren();
     try {
       await jsonRequest(`/api/system/providers/runtime/${capability}`, "PUT", {
         provider: provider.value,
-        model_id: model.value.trim(),
+        model_id: modelId,
         endpoint: endpoint.value.trim(),
         credential_reference: credential.value.trim(),
         dimensions: dimensions ? Number(dimensions.value) : null,
@@ -657,12 +783,25 @@ function runtimeConfigurationEditor(capability, initial, providers, onSaved) {
       onSaved();
     } catch (error) {
       save.disabled = false;
-      feedback.replaceChildren(apiError(error, "تعذر حفظ تهيئة التشغيل."));
+      if (
+        capability === "embedding"
+        && error instanceof ApiError
+        && error.status === 409
+        && error.code === "EMBEDDING_REINDEX_REQUIRED"
+      ) {
+        feedback.replaceChildren(errorState(
+          "يتعذر تغيير تهيئة التمثيلات",
+          "لا يمكن تغيير نموذج التمثيلات أو أبعاده مع وجود معرفة مفهرسة. يلزم مسار إعادة فهرسة معتمد قبل هذا التغيير.",
+        ));
+      } else {
+        feedback.replaceChildren(apiError(error, "تعذر حفظ تهيئة التشغيل."));
+      }
     }
   });
   form.addEventListener("submit", (event) => { event.preventDefault(); save.click(); });
   form.append(el("div", { className: "form-actions" }, save));
   const modal = drawer(capability === "embedding" ? "تهيئة نموذج التمثيلات المتجهية" : "تهيئة نموذج التوليد", form);
+  modelCatalogue.load();
 }
 
 export function providersPage() {

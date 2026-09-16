@@ -178,7 +178,9 @@ def create_app(
             create_provider_usage_router(runtime.provider_usage())
         )
         application.include_router(
-            create_provider_configuration_router(runtime.provider_configuration())
+            create_provider_configuration_router(
+                runtime.provider_configuration(), runtime.provider_model_catalogue()
+            )
         )
         application.include_router(
             create_system_conversation_router(runtime.system_conversations())

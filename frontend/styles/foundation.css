@@ -188,6 +188,13 @@ input:hover, select:hover, textarea:hover { border-color: #94a3b8; }
 .provider-runtime-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
 .provider-config-card { min-width: 0; padding: 1rem; border: 1px solid var(--line); border-radius: .65rem; background: var(--surface-muted); }
 .provider-config-card h3 { margin: 0 0 .85rem; font-size: 1rem; }
+.model-catalogue-control { display: grid; gap: .75rem; min-width: 0; }
+.model-catalogue-state:empty, .model-catalogue-results:empty { display: none; }
+.model-catalogue-results { display: grid; gap: .5rem; max-height: 20rem; padding-inline-end: .2rem; overflow-y: auto; }
+.model-catalogue-option { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--surface); }
+.model-catalogue-option.selected { border-color: var(--primary); background: #eff6ff; }
+.model-catalogue-option .primary-cell { min-width: 0; }
+.model-catalogue-option .technical-code { overflow-wrap: anywhere; word-break: break-word; }
 .usage-metrics { grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
 .usage-metrics .metric-card, .usage-metrics .metric-value { min-width: 0; }
 .usage-metrics .metric-value { max-width: 100%; font-size: clamp(1.25rem, 1rem + .7vw, 1.7rem); }

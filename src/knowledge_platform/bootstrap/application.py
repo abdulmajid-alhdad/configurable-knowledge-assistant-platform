@@ -27,6 +27,9 @@ from knowledge_platform.application.knowledge_ingestion import (
     KnowledgeSourceProcessingService,
 )
 from knowledge_platform.application.knowledge_sources import KnowledgeSourceService
+from knowledge_platform.application.provider_catalogue import (
+    ProviderModelCatalogueService,
+)
 from knowledge_platform.application.provider_configuration import (
     ModelCapability,
     ProviderConfigurationResolver,
@@ -86,7 +89,9 @@ from knowledge_platform.infrastructure.persistence.workspace_operational_state i
 )
 from knowledge_platform.infrastructure.provider_configuration import (
     EnvironmentProviderConfiguration,
+    OpenRouterModelCatalogueAdapter,
     RemoteProviderAdapterFactory,
+    SqlAlchemyEmbeddingIndexState,
     SqlAlchemyProviderConfigurationStore,
 )
 from knowledge_platform.infrastructure.provider_usage import OpenRouterUsageAdapter
@@ -108,7 +113,10 @@ from knowledge_platform.modules.workspace_assistant.domain.identifiers import (
     AssistantId,
     WorkspaceId,
 )
-from knowledge_platform.modules.workspace_assistant.domain.security import DataEgressPolicy
+from knowledge_platform.modules.workspace_assistant.domain.security import (
+    CredentialReference,
+    DataEgressPolicy,
+)
 from knowledge_platform.modules.workspace_assistant.domain.workspace import (
     Workspace,
     WorkspaceOperationalStatus,
@@ -183,6 +191,26 @@ class ApplicationRuntime:
             resolver=ProviderConfigurationResolver(store=store, fallback=fallback),
             store=store,
             fallback=fallback,
+            embedding_index_state=SqlAlchemyEmbeddingIndexState(
+                self.session_factory
+            ),
+        )
+
+    def provider_model_catalogue(self) -> ProviderModelCatalogueService:
+        store = self.provider_configuration_store()
+        fallback = self.environment_provider_configuration()
+        return ProviderModelCatalogueService(
+            access=self.access_control(),
+            providers=store,
+            catalogues={
+                "openrouter": OpenRouterModelCatalogueAdapter(
+                    api_key=lambda capability: self.credentials.resolve(
+                        CredentialReference(
+                            name=fallback.configuration(capability).credential_reference
+                        )
+                    )
+                )
+            },
         )
 
     def provider_adapter_factory(self) -> RemoteProviderAdapterFactory:

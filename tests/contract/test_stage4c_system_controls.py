@@ -149,6 +149,19 @@ def test_provider_control_surface_prioritizes_effective_runtime_state() -> None:
     assert "result = asdict(value)" in provider_contract
     assert 'value === true ? "التهيئة مكتملة" : "التهيئة غير مكتملة"' in pages
     assert "/api/system/providers/runtime/${capability}" in pages
+    assert (
+        "/api/system/providers/${encodeURIComponent(providerCode)}/"
+        "models?capability=${capability}"
+    ) in pages
+    assert "provider.addEventListener(\"change\"" in pages
+    assert "model_id: modelId" in pages
+    assert "النموذج المهيأ حاليًا غير موجود في الدليل المحمّل" in pages
+    assert "تهيئة التشغيل الحالية لم تتغير" in pages
+    assert "ready: () => catalogueReady" in pages
+    assert "if (!modelCatalogue.ready())" in pages
+    assert "تغيير نموذج التمثيلات قد يجعل الفهارس الحالية غير متوافقة" in pages
+    assert 'error.code === "EMBEDDING_REINDEX_REQUIRED"' in pages
+    assert "يلزم مسار إعادة فهرسة معتمد قبل هذا التغيير" in pages
     assert "/ask" not in provider_section
     assert "/process" not in provider_section
     assert "/chat/completions" not in provider_section

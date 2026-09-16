@@ -217,11 +217,18 @@ def test_system_inspection_and_mutation_use_canonical_permissions() -> None:
     access = Access()
     store = Store()
     environment = fallback()
+
+    class IndexState:
+        @staticmethod
+        def has_indexed_embeddings() -> bool:
+            return False
+
     service = ProviderConfigurationService(
         access=access,  # type: ignore[arg-type]
         resolver=ProviderConfigurationResolver(store=store, fallback=environment),
         store=store,
         fallback=environment,
+        embedding_index_state=IndexState(),
     )
 
     snapshot = service.runtime_configuration(ACTOR)
@@ -388,12 +395,14 @@ def test_forward_migration_qualifies_runtime_configuration_update() -> None:
 def test_system_api_and_ui_distinguish_all_configuration_sources() -> None:
     delivery = read("src/knowledge_platform/delivery/provider_configuration_api.py")
     security = read("src/knowledge_platform/delivery/security.py")
-    providers = read("frontend/system/controls-pages.js").split(
+    ui = read("frontend/system/controls-pages.js")
+    providers = ui.split(
         "export function providersPage", 1
     )[1].split("function credentialForm", 1)[0]
 
     assert '@router.get("/runtime")' in delivery
     assert '@router.put("/runtime/{capability}")' in delivery
+    assert '@router.get("/{provider}/models")' in delivery
     assert "Permission.PROVIDERS_MANAGE" in security
     assert "الحالة التشغيلية" in providers
     assert "إعداد النظام المحفوظ" in providers
@@ -404,6 +413,8 @@ def test_system_api_and_ui_distinguish_all_configuration_sources() -> None:
     assert "/chat/completions" not in providers
     assert '"/embeddings"' not in providers
     assert "vector" not in providers.lower()
+    assert "modelCatalogueControl" in ui
+    assert "model_id: modelId" in ui
 
 
 def test_workspace_and_assistant_metadata_do_not_control_global_runtime() -> None:

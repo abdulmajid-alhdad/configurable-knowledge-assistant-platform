@@ -93,3 +93,19 @@ class SqlAlchemyProviderConfigurationStore:
                 },
             ).mappings().one()
         return self._configuration(row)
+
+
+class SqlAlchemyEmbeddingIndexState:
+    """Read only whether any persisted embedding vectors exist globally."""
+
+    def __init__(self, sessions: sessionmaker[Session]) -> None:
+        self._sessions = sessions
+
+    def has_indexed_embeddings(self) -> bool:
+        with system_session_scope(self._sessions) as session:
+            value = session.scalar(
+                text("select platform.has_indexed_embeddings()")
+            )
+        if not isinstance(value, bool):
+            raise RuntimeError("embedding index state is unavailable")
+        return value

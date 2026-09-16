@@ -2,10 +2,16 @@
 
 from .environment import EnvironmentProviderConfiguration
 from .factory import RemoteProviderAdapterFactory
-from .persistence import SqlAlchemyProviderConfigurationStore
+from .openrouter_catalogue import OpenRouterModelCatalogueAdapter
+from .persistence import (
+    SqlAlchemyEmbeddingIndexState,
+    SqlAlchemyProviderConfigurationStore,
+)
 
 __all__ = [
     "EnvironmentProviderConfiguration",
+    "OpenRouterModelCatalogueAdapter",
     "RemoteProviderAdapterFactory",
+    "SqlAlchemyEmbeddingIndexState",
     "SqlAlchemyProviderConfigurationStore",
 ]

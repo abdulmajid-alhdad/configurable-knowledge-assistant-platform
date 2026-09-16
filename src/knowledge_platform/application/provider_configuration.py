@@ -26,6 +26,10 @@ class ProviderConfigurationError(RuntimeError):
     """A structurally invalid effective configuration must fail closed."""
 
 
+class ProviderConfigurationConflict(ProviderConfigurationError):
+    """A valid configuration cannot safely replace current indexed semantics."""
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderDefinition:
     code: str
@@ -91,6 +95,10 @@ class ProviderConfigurationStorePort(Protocol):
         value: ProviderConfigurationInput,
         request_id: str | None,
     ) -> StoredProviderConfiguration: ...
+
+
+class EmbeddingIndexStatePort(Protocol):
+    def has_indexed_embeddings(self) -> bool: ...
 
 
 class ProviderConfigurationControlPort(Protocol):
@@ -187,11 +195,13 @@ class ProviderConfigurationService:
         resolver: ProviderConfigurationResolver,
         store: ProviderConfigurationStorePort,
         fallback: EnvironmentProviderConfigurationPort,
+        embedding_index_state: EmbeddingIndexStatePort,
     ) -> None:
         self._access = access
         self._resolver = resolver
         self._store = store
         self._fallback = fallback
+        self._embedding_index_state = embedding_index_state
 
     @staticmethod
     def _resolved(value: ResolvedProviderConfiguration) -> dict[str, object]:
@@ -215,6 +225,17 @@ class ProviderConfigurationService:
     @staticmethod
     def _provider(value: ProviderDefinition) -> dict[str, object]:
         return asdict(value)
+
+    @staticmethod
+    def _embedding_semantic_signature(
+        value: ResolvedProviderConfiguration | ProviderConfigurationInput,
+    ) -> tuple[str, str, str, int | None]:
+        return (
+            value.provider,
+            value.model_id,
+            value.endpoint,
+            value.dimensions,
+        )
 
     def runtime_configuration(self, actor: UUID) -> dict[str, object]:
         self._access.require_system(actor, Permission.PROVIDERS_READ)
@@ -268,7 +289,32 @@ class ProviderConfigurationService:
             dimensions=dimensions,
             active=active,
         )
-        ProviderConfigurationResolver.validate(value, self._store.providers())
+        providers = self._store.providers()
+        ProviderConfigurationResolver.validate(value, providers)
+        if capability is ModelCapability.EMBEDDING:
+            current_effective = self._resolver.resolve(ModelCapability.EMBEDDING)
+            prospective_effective: (
+                ResolvedProviderConfiguration | ProviderConfigurationInput
+            ) = value
+            if not value.active:
+                prospective_effective = self._fallback.configuration(
+                    ModelCapability.EMBEDDING
+                )
+                if not prospective_effective.structurally_ready:
+                    raise ProviderConfigurationError(
+                        "ENVIRONMENT_FALLBACK_INCOMPLETE"
+                    )
+                ProviderConfigurationResolver.validate(
+                    prospective_effective, providers
+                )
+            compatibility_changed = self._embedding_semantic_signature(
+                current_effective
+            ) != self._embedding_semantic_signature(prospective_effective)
+            if (
+                compatibility_changed
+                and self._embedding_index_state.has_indexed_embeddings()
+            ):
+                raise ProviderConfigurationConflict("EMBEDDING_REINDEX_REQUIRED")
         saved = self._store.save(actor, value, request_id)
         effective = self._resolver.resolve(capability)
         return {
